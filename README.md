@@ -92,7 +92,7 @@ After installation is complete, run:
 
 ```bash
 
-python test\_marl\_env.py
+python -m test_marl_env.py
 
 ```
 
