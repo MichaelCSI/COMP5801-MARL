@@ -36,7 +36,7 @@ On Windows:
 
 ```bash
 
-MARL\\Scripts\\activate
+MARL\Scripts\activate
 
 ```
 
