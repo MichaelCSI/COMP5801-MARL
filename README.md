@@ -1,103 +1,131 @@
-# MARL Environment Setup
+# When Messages Fail: Robust Peer SoC Communication in CityLearn
 
+COMP 5801 MARL project. Six buildings in CityLearn (Challenge 2023 Phase 3.3)
+each control a battery with their own MAPPO agent. Before acting, each agent
+sends its battery state of charge (SoC) to its peers over a lossy channel. We
+measure how much of the messages' benefit survives when they drop, and whether
+training under random loss (M1-RND) makes the policies robust.
 
+| Arm | Description |
+|-----|-------------|
+| M0 | MAPPO, no messages (primary baseline) |
+| M1 | MAPPO with peer SoC + availability mask, 100% delivery in training |
+| M1-RND | Same inputs, delivery probability drawn per episode from {0, 0.5, 0.75, 1} |
+| I0, M1-RND-NM | Optional: IPPO without messages; M1-RND without the mask |
 
-## Installation
+The learner is the reference MAPPO implementation of Yu et al. (NeurIPS 2022),
+[marlbenchmark/on-policy](https://github.com/marlbenchmark/on-policy), vendored
+unmodified in `third_party/onpolicy/`.
 
-
-
-This project uses Python packages listed in `requirements.txt`.
-
-
-
-### 1. Create and activate a virtual environment
-
-
-
-Create a Python virtual environment and activate it before installing the dependencies.
-
-
-
-For example:
-
-
-
-```bash
-
-python -m venv MARL
+## Repository layout
 
 ```
-
-
-
-On Windows:
-
-
-
-```bash
-
-MARL\Scripts\activate
-
+marl/
+  comms/        lossy peer-SoC message channel and delivery schedules
+  envs/         env contract for the CityLearn wrapper, toy envs, temporary CityLearn adapter
+  mappo/        glue around on-policy (messages in actor inputs, map arms to on-policy...)
+scripts/        command-line entry points (training, speed check)
+tests/          unit and integration tests
+third_party/    vendored on-policy MAPPO code (MIT, pinned commit; see VENDORED.md)
 ```
 
+## Setup
 
-
-### 2. Install the dependencies
-
-
-
-Before installing the packages from `requirements.txt`, remove the PyTorch packages that have the `cu128` extension from the requirements file.
-
-
-
-Install the remaining packages normally:
-
-
+`requirements.txt` and `test_marl_env.py` are on the `setup_files` branch
+(they are not on `main` yet):
 
 ```bash
-
-pip install -r requirements.txt
-
+git checkout setup_files -- requirements.txt test_marl_env.py
 ```
 
+1. Create and activate a virtual environment:
 
+   ```bash
+   python -m venv MARL
+   source MARL/bin/activate      # macOS / Linux
+   MARL\Scripts\activate         # Windows
+   ```
 
-### 3. Install the CUDA 12.8 versions of PyTorch
+2. Remove the three `+cu128` PyTorch lines (`torch`, `torchvision`,
+   `torchaudio`) from `requirements.txt`, then install the rest:
 
+   ```bash
+   pip install -r requirements.txt
+   ```
 
+3. Install PyTorch:
 
-After the remaining dependencies have been installed, install the PyTorch packages separately using the CUDA 12.8 package index:
+   ```bash
+   # NVIDIA GPU (CUDA 12.8)
+   pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 --index-url https://download.pytorch.org/whl/cu128
 
+   # macOS or CPU only
+   pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0
+   ```
 
+4. Check the installation (GPU, CityLearn, multi-agent stepping):
+
+   ```bash
+   python test_marl_env.py
+   ```
+
+Run every command below from the repository root.
+
+## Running
+
+### Train one run: `scripts/train.py`
+
+Trains one (arm, seed) pair. It writes `runs/<arm>_s<seed>.jsonl` (config +
+one line per update) and `runs/<arm>_s<seed>.pt` (checkpoint).
 
 ```bash
-
-pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 --index-url https://download.pytorch.org/whl/cu128
-
+python -m scripts.train --arm M1-RND --seed 0 --steps 200000 --env citylearn
+python -m scripts.train --arm M0 --seed 0 --steps 20000 --env toy   # fast check on the toy env
 ```
 
+| Option | Default | Meaning |
+|--------|---------|---------|
+| `--arm` | `M0` | `M0`, `M1`, `M1-RND`, `I0`, `M1-RND-NM` |
+| `--seed` | `0` | Run seed (the same seed gives the same outages in every arm) |
+| `--steps` | `20000` | Total environment steps |
+| `--env` | `toy` | `toy` or `citylearn` (temporary adapter until the project wrapper lands) |
+| `--episode-steps` | `168` | Training episode length in hours |
+| `--rollout-steps` | `1000` | Steps collected per PPO update |
+| `--out` | `runs` | Output directory |
 
+### Speed check: `scripts/speed_check.py`
 
-This installs the CUDA 12.8 versions of PyTorch, torchvision, and torchaudio.
-
-
-
-### 4. Test the MARL environment
-
-
-
-After installation is complete, run:
-
-
+Measures raw environment steps/s and MAPPO steps/s, and estimates hours per
+training run (the proposal's target is 2 hours or less).
 
 ```bash
-
-python -m test_marl_env.py
-
+python -m scripts.speed_check                        # CityLearn
+python -m scripts.speed_check --env toy --steps 1000
 ```
 
+Options: `--env` (`citylearn`), `--steps` (`720`, steps to time),
+`--train-steps` (`200000`, planned steps per run for the estimate).
 
+## Testing
 
-This script can be used to verify that the required environment and dependencies have been installed correctly.
+Run all tests:
 
->>>>>>> setup_files
+```bash
+python -m pytest tests -v
+python -m unittest discover -s tests -t . -v   # same tests, without pytest
+```
+
+Tests that need torch or CityLearn skip themselves when those packages are
+missing.
+
+| File | What it checks | Needs | Run alone |
+|------|----------------|-------|-----------|
+| `tests/test_channel.py` | Message format, delivery rate and independence, seeding, forced-mask mode, M1-RND schedule | numpy | `python -m pytest tests/test_channel.py -v` |
+| `tests/test_message_env.py` | Actor/critic inputs (critic never sees drops), raw messages, paired seeds across arms, env contract, evaluation | numpy | `python -m pytest tests/test_message_env.py -v` |
+| `tests/test_onpolicy_args.py` | Arms map to identical on-policy settings; vendored on-policy files match upstream | numpy | `python -m pytest tests/test_onpolicy_args.py -v` |
+| `tests/test_citylearn_adapter.py` | Temporary CityLearn adapter against a fake CityLearn: split windows, truncation at episode end, battery energy, seed range | numpy | `python -m pytest tests/test_citylearn_adapter.py -v` |
+| `tests/test_onpolicy_runner.py` | Training with on-policy MAPPO for every arm, reproducibility, checkpoints, learning-from-messages check (about a minute) | torch | `python -m pytest tests/test_onpolicy_runner.py -v -s` |
+| `tests/test_citylearn_smoke.py` | CityLearn adapter on the real 2023 Phase 3.3 dataset (split windows, truncation); one training update per arm and steps/s | citylearn, torch | `python -m pytest tests/test_citylearn_smoke.py -v -s` |
+
+Without pytest, use `python -m unittest tests.test_channel -v` (and so on).
+`-s` shows the printed learning and speed results.

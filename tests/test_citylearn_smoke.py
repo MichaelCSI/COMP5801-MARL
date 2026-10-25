@@ -33,6 +33,26 @@ class TestCityLearnAdapter(unittest.TestCase):
             self.env.step([np.ones(1, np.float32)] * 6)
         self.assertTrue(np.all(self.env.soc() >= s0 - 1e-6))
 
+    def test_train_windows_inside_train_block_and_truncated(self):
+        rng = np.random.default_rng(0)
+        for _ in range(5):
+            self.env.reset(seed=int(rng.integers(2 ** 31 - 1)))
+            a, b = self.env.episode_window()
+            self.assertTrue(0 <= a and b <= 1487 and b - a + 1 == 48, (a, b))
+        ended = None
+        while ended is None:
+            _, _, term, trunc, info = self.env.step([np.zeros(1, np.float32)] * 6)
+            self.assertEqual(info["battery_energy"].shape, (6,))
+            if term or trunc:
+                ended = (term, trunc)
+        self.assertEqual(ended, (False, True))
+
+    def test_test_split_is_whole_block(self):
+        from marl.envs.citylearn_adapter import CityLearnAdapter
+        env = CityLearnAdapter(split="test")
+        env.reset(seed=0)
+        self.assertEqual(env.episode_window(), (1848, 2207))
+
     def test_global_state_has_no_duplicate_shared_columns(self):
         self.assertLess(self.env.state_dim, sum(self.env.obs_dims))
 
@@ -41,18 +61,18 @@ class TestCityLearnAdapter(unittest.TestCase):
 class TestCityLearnTraining(unittest.TestCase):
     def test_one_update_per_arm_and_speed(self):
         from marl.envs.citylearn_adapter import CityLearnAdapter
-        from marl.mappo import MAPPOConfig, MAPPOTrainer
+        from marl.mappo import MAPPOConfig, OnPolicyRunner
         for arm in ("M0", "M1", "M1-RND"):
             env = CityLearnAdapter(episode_time_steps=168)
-            cfg = MAPPOConfig.for_arm(arm, total_steps=512, rollout_steps=512,
-                                      ppo_epochs=2, num_minibatches=2)
+            cfg = MAPPOConfig.for_arm(arm, total_steps=500, rollout_steps=500,
+                                      onpolicy_overrides={"ppo_epoch": 2})
             t0 = time.perf_counter()
-            hist = MAPPOTrainer(env, cfg).train()
+            hist = OnPolicyRunner(env, cfg).run()
             dt = time.perf_counter() - t0
             sps = hist[-1]["steps_per_sec"]
-            print(f"\n  {arm}: rollout {sps:.0f} steps/s; 512 steps + update in {dt:.1f}s; "
+            print(f"\n  {arm}: rollout {sps:.0f} steps/s; 500 steps + update in {dt:.1f}s; "
                   f"=> ~{2208 * 100 / sps / 3600:.2f} h per 100 passes over 2208 steps")
-            self.assertTrue(np.isfinite(hist[-1]["v_loss"]))
+            self.assertTrue(np.isfinite(hist[-1]["value_loss"]))
 
 
 if __name__ == "__main__":

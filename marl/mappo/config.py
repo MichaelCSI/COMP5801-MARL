@@ -1,4 +1,16 @@
-"""Training configuration and the experimental arms (proposal Sections 4-6)."""
+"""Experimental arms and the mapping onto on-policy's MAPPO arguments.
+
+The learner is the reference MAPPO implementation (marlbenchmark/on-policy,
+Yu et al. 2022), vendored in third_party/onpolicy. ``MAPPOConfig`` holds:
+
+* the fields that DEFINE an arm (messages on/off, training delivery
+  schedule, centralized vs local critic), and
+* run settings (seed, steps, rollout length),
+
+and ``to_onpolicy_args()`` turns it into the ``argparse.Namespace`` on-policy
+expects. Everything not set below keeps on-policy's own default, and every
+arm gets the same values (equal tuning budget, proposal Section 4).
+"""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, replace
@@ -7,8 +19,6 @@ import numpy as np
 
 from ..comms.channel import RND_P_CHOICES
 
-# arm -> settings that define it. Everything else is shared, so arms differ
-# ONLY in these fields (proposal: "identical except for the peer-SoC input").
 ARMS = {
     # primary baseline: MAPPO without messages
     "M0": dict(use_messages=False, critic="central", train_schedule="none"),
@@ -16,21 +26,40 @@ ARMS = {
     "M1": dict(use_messages=True, critic="central", train_schedule="fixed", train_p=1.0),
     # messages, p ~ U{0, .5, .75, 1} per training episode
     "M1-RND": dict(use_messages=True, critic="central", train_schedule="random"),
-    # optional: IPPO without messages (local critics)
+    # optional: IPPO without messages (each critic sees only its agent's input)
     "I0": dict(use_messages=False, critic="local", train_schedule="none"),
-    # optional: M1-RND without the availability mask (mask column held at 1,
-    # so it carries no information and a drop looks like SoC = 0)
+    # optional: M1-RND without the availability mask (mask column held at 1)
     "M1-RND-NM": dict(use_messages=True, critic="central", train_schedule="random",
                       force_mask_train=True),
 }
 
-# Independent random streams, keyed so they do not depend on the arm.
-# Same seed => same env reset seeds (outages / windows) in every arm.
+# Independent random streams keyed so they do not depend on the arm:
+# same seed => same env reset seeds (outages / windows) in every arm.
 STREAM_TORCH, STREAM_ENV, STREAM_CHANNEL, STREAM_SCHEDULE, STREAM_EVAL = 0, 1, 2, 3, 4
 
 
 def stream(seed: int, key: int) -> np.random.SeedSequence:
     return np.random.SeedSequence([int(seed), int(key)])
+
+
+# on-policy settings fixed by the experimental design (not tuning knobs).
+FIXED_ONPOLICY_ARGS = dict(
+    algorithm_name="mappo",           # feed-forward MAPPO (on-policy's "mappo")
+    share_policy=False,               # separated mode: one actor per building
+    use_recurrent_policy=False,       # MLP policy, as in the proposal
+    use_naive_recurrent_policy=False,
+    n_rollout_threads=1,              # CityLearn is a single sequential simulator
+    use_wandb=False,
+    use_render=False,
+    use_eval=False,
+    # Training windows end by time limit, not a true terminal: on-policy's
+    # bad_masks then zero the advantage of the cut-off step.
+    use_proper_time_limits=True,
+    # We normalize each local feature with running statistics in MessageEnv
+    # and leave the [SoC, mask] message columns raw. A LayerNorm over the whole
+    # actor input would mix raw-scale CityLearn features with the messages.
+    use_feature_normalization=False,
+)
 
 
 @dataclass
@@ -46,35 +75,15 @@ class MAPPOConfig:
     rnd_p_choices: tuple = RND_P_CHOICES
     force_mask_train: bool = False
 
-    # RL
-    total_steps: int = 200_000       # environment steps (each = all agents act once)
-    rollout_steps: int = 2_048
-    gamma: float = 0.99
-    gae_lambda: float = 0.95
-    bootstrap_on_truncation: bool = True
-
-    # PPO
-    ppo_epochs: int = 10
-    num_minibatches: int = 4
-    clip_eps: float = 0.2
-    value_clip_eps: float = 0.2
-    entropy_coef: float = 0.0
-    value_coef: float = 1.0
-    max_grad_norm: float = 0.5
-    actor_lr: float = 3e-4
-    critic_lr: float = 1e-3
-    lr_anneal: bool = True
-    target_kl: float | None = None
-
-    # networks
-    hidden_sizes: tuple = (64, 64)
-    init_log_std: float = -0.5
+    # run settings
+    total_steps: int = 200_000       # env steps (each = all agents act once)
+    rollout_steps: int = 1_000       # on-policy `episode_length` (buffer length)
     normalize_obs: bool = True
-    normalize_value: bool = True
     obs_clip: float = 10.0
-
     device: str = "cpu"
-    extra: dict = field(default_factory=dict)
+
+    # anything else on-policy accepts, e.g. {"ppo_epoch": 10, "lr": 3e-4}
+    onpolicy_overrides: dict = field(default_factory=dict)
 
     @classmethod
     def for_arm(cls, arm: str, **overrides) -> "MAPPOConfig":
@@ -92,8 +101,29 @@ class MAPPOConfig:
             raise ValueError("message arms need a training delivery schedule")
         if not self.use_messages and self.train_schedule != "none":
             raise ValueError("no-message arms must use train_schedule='none'")
-        if self.rollout_steps % self.num_minibatches:
-            raise ValueError("rollout_steps must be divisible by num_minibatches")
+        bad = set(self.onpolicy_overrides) & set(FIXED_ONPOLICY_ARGS)
+        if bad:
+            raise ValueError(f"these on-policy args are fixed by the design: {sorted(bad)}")
+
+    def to_onpolicy_args(self):
+        """``argparse.Namespace`` for on-policy's R_MAPPO / R_MAPPOPolicy / buffer."""
+        from .onpolicy_compat import get_onpolicy_parser
+
+        self.validate()
+        args = get_onpolicy_parser().parse_args([])   # on-policy reference defaults
+        for k, v in FIXED_ONPOLICY_ARGS.items():
+            setattr(args, k, v)
+        args.use_centralized_V = self.critic == "central"
+        args.seed = int(self.seed)
+        args.episode_length = int(self.rollout_steps)
+        args.num_env_steps = int(self.total_steps)
+        args.cuda = self.device != "cpu"
+        args.experiment_name = f"{self.arm}_s{self.seed}"
+        for k, v in self.onpolicy_overrides.items():
+            if not hasattr(args, k):
+                raise ValueError(f"on-policy has no argument {k!r}")
+            setattr(args, k, v)
+        return args
 
     def to_dict(self) -> dict:
         return asdict(self)

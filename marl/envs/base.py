@@ -22,6 +22,14 @@ runner to work unchanged. ``check_env_contract`` verifies it.
 
 ``soc()`` and ``global_state()`` must describe the state the agents are
 about to act in, i.e. the state matching the most recent ``obs``.
+
+Episode ends: a training window running out is a time limit, so report it as
+``truncated=True`` (``terminated`` only for a true terminal state, which this
+task does not have). The trainer then treats it as a cut-off, not an ending.
+
+Optional ``info["battery_energy"]``: (n,) array, each battery's actual
+electricity use at the meter in the step just taken (kWh, + charging). It is
+recorded by evaluation and is the signal for the synchrony diagnostic.
 """
 from __future__ import annotations
 

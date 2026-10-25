@@ -1,23 +1,23 @@
-"""MAPPO with peer-SoC messages.
+"""MAPPO with peer-SoC messages, on top of the reference on-policy MAPPO.
 
-Torch-free pieces (config, buffer, normalizers, rollout/evaluate) import
-without torch; the trainer and networks need torch.
+Learner: marlbenchmark/on-policy (Yu et al., NeurIPS 2022), vendored in
+third_party/onpolicy. Torch-free pieces (config, MessageEnv, evaluate,
+normalizers) import without torch; ``OnPolicyRunner`` needs torch.
 """
-from .buffer import RolloutBuffer, compute_gae
-from .config import ARMS, MAPPOConfig
-from .normalize import Preprocessor, RunningMeanStd
-from .rollout import RandomPolicy, RolloutWorker, build_actor_inputs, evaluate
-
 import importlib.util as _ilu
 
+from .config import ARMS, FIXED_ONPOLICY_ARGS, MAPPOConfig
+from .evaluate import RandomPolicy, evaluate
+from .message_env import MessageEnv, build_actor_inputs, make_message_env
+from .normalize import Preprocessor, RunningMeanStd
+
 if _ilu.find_spec("torch") is not None:
-    from .networks import MAPPOPolicy
-    from .trainer import MAPPOTrainer
+    from .runner import OnPolicyRunner
 else:  # pragma: no cover - torch is optional at import time
-    MAPPOPolicy = MAPPOTrainer = None
+    OnPolicyRunner = None
 
 __all__ = [
-    "ARMS", "MAPPOConfig", "MAPPOPolicy", "MAPPOTrainer", "Preprocessor", "RandomPolicy",
-    "RolloutBuffer", "RolloutWorker", "RunningMeanStd", "build_actor_inputs",
-    "compute_gae", "evaluate",
+    "ARMS", "FIXED_ONPOLICY_ARGS", "MAPPOConfig", "MessageEnv", "OnPolicyRunner",
+    "Preprocessor", "RandomPolicy", "RunningMeanStd", "build_actor_inputs", "evaluate",
+    "make_message_env",
 ]

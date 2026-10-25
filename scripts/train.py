@@ -1,5 +1,8 @@
 """Train one (arm, seed) run and write a checkpoint + JSONL log.
 
+The learner is on-policy's reference MAPPO (Yu et al. 2022), vendored in
+third_party/onpolicy; see marl/mappo/runner.py.
+
     python -m scripts.train --arm M1-RND --seed 0 --steps 200000 --env citylearn
     python -m scripts.train --arm M0 --seed 0 --steps 20000 --env toy
 
@@ -12,7 +15,7 @@ import json
 import os
 import time
 
-from marl.mappo import ARMS, MAPPOConfig, MAPPOTrainer
+from marl.mappo import ARMS, MAPPOConfig, OnPolicyRunner
 
 
 def make_env(name: str, episode_steps: int):
@@ -28,6 +31,8 @@ def make_env(name: str, episode_steps: int):
 
 def run(arm: str, seed: int, steps: int, env_name: str = "toy", episode_steps: int = 168,
         out_dir: str = "runs", **overrides) -> str:
+    if OnPolicyRunner is None:
+        raise SystemExit("training needs torch: see the Setup section of README.md")
     os.makedirs(out_dir, exist_ok=True)
     tag = f"{arm}_s{seed}"
     log_path = os.path.join(out_dir, f"{tag}.jsonl")
@@ -43,10 +48,10 @@ def run(arm: str, seed: int, steps: int, env_name: str = "toy", episode_steps: i
                   f"ret {stats['ep_return_mean']} sps {stats['steps_per_sec']:.0f}")
 
         t0 = time.time()
-        tr = MAPPOTrainer(env, cfg, logger=log)
-        tr.train()
+        runner = OnPolicyRunner(env, cfg, logger=log)
+        runner.run()
     ck = os.path.join(out_dir, f"{tag}.pt")
-    tr.save(ck)
+    runner.save(ck)
     print(f"[{tag}] done in {time.time() - t0:.0f}s -> {ck}")
     return ck
 
@@ -58,7 +63,7 @@ def main():
     ap.add_argument("--steps", type=int, default=20_000)
     ap.add_argument("--env", choices=["toy", "citylearn"], default="toy")
     ap.add_argument("--episode-steps", type=int, default=168)
-    ap.add_argument("--rollout-steps", type=int, default=2048)
+    ap.add_argument("--rollout-steps", type=int, default=1000)
     ap.add_argument("--out", default="runs")
     a = ap.parse_args()
     run(a.arm, a.seed, a.steps, a.env, a.episode_steps, a.out, rollout_steps=a.rollout_steps)

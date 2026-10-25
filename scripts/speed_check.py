@@ -34,14 +34,13 @@ def main():
     raw = a.steps / (time.perf_counter() - t0)
     print(f"raw env: {raw:.0f} steps/s")
 
-    from marl.mappo import MAPPOConfig, MAPPOTrainer
-    if MAPPOTrainer is None:
+    from marl.mappo import MAPPOConfig, OnPolicyRunner
+    if OnPolicyRunner is None:
         print("torch not installed: skipped the MAPPO timing")
         return
-    cfg = MAPPOConfig.for_arm("M1-RND", total_steps=a.steps, rollout_steps=a.steps,
-                              num_minibatches=4 if a.steps % 4 == 0 else 1)
+    cfg = MAPPOConfig.for_arm("M1-RND", total_steps=a.steps, rollout_steps=a.steps)
     t0 = time.perf_counter()
-    hist = MAPPOTrainer(make_env(a.env, a.steps), cfg).train()
+    hist = OnPolicyRunner(make_env(a.env, a.steps), cfg).run()
     total = time.perf_counter() - t0
     per_step = total / a.steps
     print(f"MAPPO M1-RND: rollout {hist[-1]['steps_per_sec']:.0f} steps/s, "
