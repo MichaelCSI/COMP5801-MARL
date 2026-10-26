@@ -43,10 +43,6 @@ Use Python 3.10, 3.11 or 3.12.
    .venv\Scripts\activate         # Windows
    ```
 
-   Don't name it `MARL`: macOS and Windows file names ignore case, so a
-   `MARL` folder is the same folder as the `marl/` package and the venv ends
-   up inside the code.
-
 2. Install PyTorch first, so CityLearn doesn't pull in a different build:
 
    ```bash

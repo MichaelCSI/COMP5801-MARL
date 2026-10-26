@@ -132,7 +132,7 @@ aggregation, paired t-intervals, synchrony (Vishal).
 ## 3. Running
 
 ```bash
-python -m pytest tests -v                       # in the MARL venv (torch + citylearn)
+python -m pytest tests -v                       # in the project venv, .venv (torch + citylearn)
 python -m unittest discover -s tests -t . -v    # same tests, no pytest needed
 python -m scripts.speed_check                   # CityLearn steps/s and hours per run
 python -m scripts.train --arm M1-RND --seed 0 --steps 20000 --env citylearn
