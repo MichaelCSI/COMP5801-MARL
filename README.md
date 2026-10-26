@@ -27,47 +27,54 @@ marl/
 scripts/        command-line entry points (training, speed check)
 tests/          unit and integration tests
 third_party/    vendored on-policy MAPPO code (MIT, pinned commit; see VENDORED.md)
+WorkPlan.md     work plan per team member
+requirements.txt, test_marl_env.py   dependencies and installation check
 ```
 
 ## Setup
 
-`requirements.txt` and `test_marl_env.py` are on the `setup_files` branch
-(they are not on `main` yet):
-
-```bash
-git checkout setup_files -- requirements.txt test_marl_env.py
-```
+Use Python 3.10, 3.11 or 3.12.
 
 1. Create and activate a virtual environment:
 
    ```bash
-   python -m venv MARL
-   source MARL/bin/activate      # macOS / Linux
-   MARL\Scripts\activate         # Windows
+   python -m venv .venv
+   source .venv/bin/activate      # macOS / Linux
+   .venv\Scripts\activate         # Windows
    ```
 
-2. Remove the three `+cu128` PyTorch lines (`torch`, `torchvision`,
-   `torchaudio`) from `requirements.txt`, then install the rest:
+   Don't name it `MARL`: macOS and Windows file names ignore case, so a
+   `MARL` folder is the same folder as the `marl/` package and the venv ends
+   up inside the code.
+
+2. Install PyTorch first, so CityLearn doesn't pull in a different build:
+
+   ```bash
+   # NVIDIA GPU (CUDA 12.8)
+   pip install torch==2.10.0 torchvision==0.25.0 --index-url https://download.pytorch.org/whl/cu128
+
+   # macOS or CPU only
+   pip install torch==2.10.0 torchvision==0.25.0
+   ```
+
+3. Install the rest (CityLearn, numpy, scipy, matplotlib, pytest):
 
    ```bash
    pip install -r requirements.txt
    ```
 
-3. Install PyTorch:
-
-   ```bash
-   # NVIDIA GPU (CUDA 12.8)
-   pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 --index-url https://download.pytorch.org/whl/cu128
-
-   # macOS or CPU only
-   pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0
-   ```
-
-4. Check the installation (GPU, CityLearn, multi-agent stepping):
+4. Check the installation:
 
    ```bash
    python test_marl_env.py
    ```
+
+   It prints the PyTorch version and whether a GPU is available, then runs a
+   24-step multi-agent CityLearn episode with random actions and reports
+   each agent's observation size, action space and rewards. It uses the
+   `citylearn_challenge_2020_climate_zone_1` dataset, not the project's 2023
+   Phase 3.3 dataset. CityLearn downloads a dataset the first time it is used,
+   so the first run needs internet access.
 
 Run every command below from the repository root.
 

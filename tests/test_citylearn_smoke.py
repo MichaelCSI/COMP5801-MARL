@@ -28,24 +28,26 @@ class TestCityLearnAdapter(unittest.TestCase):
 
     def test_soc_tracks_charging(self):
         self.env.reset(seed=0)
-        s0 = self.env.soc()
+        soc_before = self.env.soc()
         for _ in range(3):
-            self.env.step([np.ones(1, np.float32)] * 6)
-        self.assertTrue(np.all(self.env.soc() >= s0 - 1e-6))
+            self.env.step([np.ones(1, np.float32)] * 6)   # full charge
+        self.assertTrue(np.all(self.env.soc() >= soc_before - 1e-6))
 
     def test_train_windows_inside_train_block_and_truncated(self):
         rng = np.random.default_rng(0)
         for _ in range(5):
             self.env.reset(seed=int(rng.integers(2 ** 31 - 1)))
-            a, b = self.env.episode_window()
-            self.assertTrue(0 <= a and b <= 1487 and b - a + 1 == 48, (a, b))
-        ended = None
-        while ended is None:
-            _, _, term, trunc, info = self.env.step([np.zeros(1, np.float32)] * 6)
+            start, end = self.env.episode_window()
+            self.assertTrue(0 <= start and end <= 1487 and end - start + 1 == 48, (start, end))
+
+        # step to the end of the episode: it must end as a truncation
+        end_flags = None
+        while end_flags is None:
+            _, _, terminated, truncated, info = self.env.step([np.zeros(1, np.float32)] * 6)
             self.assertEqual(info["battery_energy"].shape, (6,))
-            if term or trunc:
-                ended = (term, trunc)
-        self.assertEqual(ended, (False, True))
+            if terminated or truncated:
+                end_flags = (terminated, truncated)
+        self.assertEqual(end_flags, (False, True))
 
     def test_test_split_is_whole_block(self):
         from marl.envs.citylearn_adapter import CityLearnAdapter
@@ -64,15 +66,17 @@ class TestCityLearnTraining(unittest.TestCase):
         from marl.mappo import MAPPOConfig, OnPolicyRunner
         for arm in ("M0", "M1", "M1-RND"):
             env = CityLearnAdapter(episode_time_steps=168)
-            cfg = MAPPOConfig.for_arm(arm, total_steps=500, rollout_steps=500,
-                                      onpolicy_overrides={"ppo_epoch": 2})
-            t0 = time.perf_counter()
-            hist = OnPolicyRunner(env, cfg).run()
-            dt = time.perf_counter() - t0
-            sps = hist[-1]["steps_per_sec"]
-            print(f"\n  {arm}: rollout {sps:.0f} steps/s; 500 steps + update in {dt:.1f}s; "
-                  f"=> ~{2208 * 100 / sps / 3600:.2f} h per 100 passes over 2208 steps")
-            self.assertTrue(np.isfinite(hist[-1]["value_loss"]))
+            config = MAPPOConfig.for_arm(arm, total_steps=500, rollout_steps=500,
+                                         onpolicy_overrides={"ppo_epoch": 2})
+            start = time.perf_counter()
+            history = OnPolicyRunner(env, config).run()
+            seconds = time.perf_counter() - start
+
+            steps_per_sec = history[-1]["steps_per_sec"]
+            print(f"\n  {arm}: rollout {steps_per_sec:.0f} steps/s; "
+                  f"500 steps + update in {seconds:.1f}s; "
+                  f"=> ~{2208 * 100 / steps_per_sec / 3600:.2f} h per 100 passes over 2208 steps")
+            self.assertTrue(np.isfinite(history[-1]["value_loss"]))
 
 
 if __name__ == "__main__":

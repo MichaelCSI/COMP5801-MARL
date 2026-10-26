@@ -2,3 +2,12 @@ __pycache__/
 *.pyc
 runs/
 *.pt
+
+# virtual environments
+.venv/
+# a venv created as "MARL" lands inside the marl/ package on macOS/Windows
+marl/bin/
+marl/include/
+marl/lib/
+marl/share/
+marl/pyvenv.cfg

@@ -68,15 +68,19 @@ def split_kwargs(split: str, episode_time_steps: int) -> dict:
     if split not in SPLITS:
         raise ValueError(f"split must be one of {sorted(SPLITS)}, got {split!r}")
     start, end = SPLITS[split]
+    block_length = end - start + 1
+
     if split == "train":
-        if not 1 < episode_time_steps <= end - start + 1:
-            raise ValueError(f"episode_time_steps must be in (1, {end - start + 1}]")
+        if not 1 < episode_time_steps <= block_length:
+            raise ValueError(f"episode_time_steps must be in (1, {block_length}]")
         # every time step in the block is a candidate start; picked at random
         return dict(simulation_start_time_step=start, simulation_end_time_step=end,
                     episode_time_steps=int(episode_time_steps),
                     rolling_episode_split=True, random_episode_split=True)
+
+    # validation / test: one episode covering the whole block
     return dict(simulation_start_time_step=start, simulation_end_time_step=end,
-                episode_time_steps=end - start + 1,
+                episode_time_steps=block_length,
                 rolling_episode_split=False, random_episode_split=False)
 
 
@@ -93,82 +97,102 @@ class CityLearnAdapter:
         from citylearn.citylearn import CityLearnEnv  # imported lazily
 
         self.split = split
-        kwargs = dict(central_agent=False)
-        kwargs["active_actions"] = active_actions or ["electrical_storage"]
-        kwargs.update(split_kwargs(split, episode_time_steps))
-        kwargs.update(citylearn_kwargs)
-        self.env = CityLearnEnv(schema, **kwargs)
+        env_kwargs = dict(central_agent=False)
+        env_kwargs["active_actions"] = active_actions or ["electrical_storage"]
+        env_kwargs.update(split_kwargs(split, episode_time_steps))
+        env_kwargs.update(citylearn_kwargs)
+        self.env = CityLearnEnv(schema, **env_kwargs)
         self.reward_fn = reward_fn
 
         self.n_agents = len(self.env.action_space)
-        self.observation_names = [list(n) for n in self.env.observation_names]
-        self.action_names = [list(n) for n in self.env.action_names]
-        for i, names in enumerate(self.action_names):
+        self.observation_names = [list(names) for names in self.env.observation_names]
+        self.action_names = [list(names) for names in self.env.action_names]
+        for building, names in enumerate(self.action_names):
             if names != ["electrical_storage"]:
                 raise RuntimeError(
-                    f"building {i} has actions {names}; expected only electrical_storage"
+                    f"building {building} has actions {names}; expected only electrical_storage"
                 )
-        self.obs_dims = [len(n) for n in self.observation_names]
-        self.action_dims = [int(np.prod(s.shape)) for s in self.env.action_space]
 
-        self._soc_idx = []
-        for i, names in enumerate(self.observation_names):
+        self.obs_dims = [len(names) for names in self.observation_names]
+        self.action_dims = [int(np.prod(space.shape)) for space in self.env.action_space]
+
+        # Position of the SoC entry in each building's observation
+        self._soc_position = []
+        for building, names in enumerate(self.observation_names):
             if SOC_NAME not in names:
-                raise RuntimeError(f"building {i} does not observe {SOC_NAME}")
-            self._soc_idx.append(names.index(SOC_NAME))
+                raise RuntimeError(f"building {building} does not observe {SOC_NAME}")
+            self._soc_position.append(names.index(SOC_NAME))
 
-        shared = set(getattr(self.env, "shared_observations", []) or [])
-        names0 = self.observation_names[0]
-        self._shared_idx0 = [k for k, nm in enumerate(names0) if nm in shared]
-        self._local_idx = [[k for k, nm in enumerate(names) if nm not in shared]
-                           for names in self.observation_names]
-        self.state_dim = len(self._shared_idx0) + sum(len(ix) for ix in self._local_idx)
+        # Global state = shared observations once (from building 0) + every
+        # building's local observations
+        shared_names = set(getattr(self.env, "shared_observations", []) or [])
+        self._shared_positions = [
+            k for k, name in enumerate(self.observation_names[0]) if name in shared_names
+        ]
+        self._local_positions = [
+            [k for k, name in enumerate(names) if name not in shared_names]
+            for names in self.observation_names
+        ]
+        self.state_dim = (len(self._shared_positions)
+                          + sum(len(positions) for positions in self._local_positions))
         self._obs = None
 
     def reset(self, seed=None, options=None):
         obs, info = self.env.reset(seed=citylearn_seed(seed), options=options)
-        self._obs = [np.asarray(o, dtype=np.float32) for o in obs]
+        self._obs = [np.asarray(agent_obs, dtype=np.float32) for agent_obs in obs]
+
         info = dict(info or {})
         info["episode_start_time_step"] = self.episode_window()[0]
         return self._obs, info
 
     def episode_window(self):
         """(start, end) time steps of the current episode in the dataset."""
-        tr = self.env.episode_tracker
-        return int(tr.episode_start_time_step), int(tr.episode_end_time_step)
+        tracker = self.env.episode_tracker
+        return int(tracker.episode_start_time_step), int(tracker.episode_end_time_step)
 
     def battery_energy(self) -> np.ndarray:
         """Each battery's electricity use in the step just taken (kWh, + charging)."""
         # The env clock always advances after a step; on the terminal step the
         # buildings' clocks do not (CityLearn 3.0.2 runtime.next_time_step),
         # so the step just taken is env.time_step - 1, not building.time_step - 1.
-        t = max(0, int(self.env.time_step) - 1)
-        return np.asarray([float(b.electrical_storage.electricity_consumption[t])
-                           for b in self.env.buildings], dtype=np.float32)
+        last_step = max(0, int(self.env.time_step) - 1)
+        return np.asarray(
+            [float(b.electrical_storage.electricity_consumption[last_step])
+             for b in self.env.buildings],
+            dtype=np.float32,
+        )
 
     def step(self, actions):
-        acts = [np.clip(np.asarray(a, dtype=np.float32).reshape(-1), -1.0, 1.0).tolist()
-                for a in actions]
-        obs, rewards, terminated, truncated, info = self.env.step(acts)
-        self._obs = [np.asarray(o, dtype=np.float32) for o in obs]
+        clipped_actions = [
+            np.clip(np.asarray(a, dtype=np.float32).reshape(-1), -1.0, 1.0).tolist()
+            for a in actions
+        ]
+        obs, building_rewards, terminated, truncated, info = self.env.step(clipped_actions)
+        self._obs = [np.asarray(agent_obs, dtype=np.float32) for agent_obs in obs]
+
         if self.reward_fn is not None:
-            reward = float(self.reward_fn(self.env, rewards))
+            reward = float(self.reward_fn(self.env, building_rewards))
         else:
-            reward = float(np.sum(rewards))
+            reward = float(np.sum(building_rewards))   # placeholder until Andrea's reward
+
         info = dict(info or {})
-        info["building_rewards"] = np.asarray(rewards, dtype=np.float32)
+        info["building_rewards"] = np.asarray(building_rewards, dtype=np.float32)
         info["battery_energy"] = self.battery_energy()
+
         # The episode ends because the window ran out, never because the task did.
-        ended = bool(terminated or truncated)
-        return self._obs, reward, False, ended, info
+        episode_over = bool(terminated or truncated)
+        return self._obs, reward, False, episode_over, info
 
     def soc(self):
-        return np.array([self._obs[i][k] for i, k in enumerate(self._soc_idx)],
-                        dtype=np.float32)
+        return np.array(
+            [self._obs[building][position] for building, position in enumerate(self._soc_position)],
+            dtype=np.float32,
+        )
 
     def global_state(self):
-        parts = [self._obs[0][self._shared_idx0]]
-        parts += [self._obs[i][ix] for i, ix in enumerate(self._local_idx)]
+        parts = [self._obs[0][self._shared_positions]]
+        parts += [self._obs[building][positions]
+                  for building, positions in enumerate(self._local_positions)]
         return np.concatenate(parts).astype(np.float32)
 
     def close(self):

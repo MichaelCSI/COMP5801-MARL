@@ -10,7 +10,7 @@ import numpy as np
 
 class Box:
     def __init__(self, low, high, shape, dtype=np.float32):
-        self.shape = tuple(int(s) for s in shape)
+        self.shape = tuple(int(size) for size in shape)
         self.dtype = dtype
         self.low = np.full(self.shape, low, dtype=dtype)
         self.high = np.full(self.shape, high, dtype=dtype)

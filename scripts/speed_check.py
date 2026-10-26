@@ -12,41 +12,51 @@ import time
 
 import numpy as np
 
+from scripts.train import make_env
+
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--env", choices=["toy", "citylearn"], default="citylearn")
-    ap.add_argument("--steps", type=int, default=720)
-    ap.add_argument("--train-steps", type=int, default=200_000,
-                    help="planned env steps per run, for the time estimate")
-    a = ap.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--env", choices=["toy", "citylearn"], default="citylearn")
+    parser.add_argument("--steps", type=int, default=720)
+    parser.add_argument(
+        "--train-steps",
+        type=int,
+        default=200_000,
+        help="planned env steps per run, for the time estimate"
+    )
+    args = parser.parse_args()
 
-    from scripts.train import make_env
-    env = make_env(a.env, a.steps)
-
+    # 1) the environment alone, with random actions
+    env = make_env(args.env, args.steps)
     env.reset(seed=0)
-    t0 = time.perf_counter()
-    for _ in range(a.steps):
-        _, _, te, tr, _ = env.step([np.random.uniform(-1, 1, d).astype(np.float32)
-                                    for d in env.action_dims])
-        if te or tr:
-            env.reset()
-    raw = a.steps / (time.perf_counter() - t0)
-    print(f"raw env: {raw:.0f} steps/s")
+    start = time.perf_counter()
 
+    for _ in range(args.steps):
+        random_actions = [np.random.uniform(-1, 1, dim).astype(np.float32)
+                          for dim in env.action_dims]
+        _, _, terminated, truncated, _ = env.step(random_actions)
+        if terminated or truncated:
+            env.reset()
+
+    env_steps_per_sec = args.steps / (time.perf_counter() - start)
+    print(f"raw env: {env_steps_per_sec:.0f} steps/s")
+
+    # 2) MAPPO training on the same env: rollout plus one update
     from marl.mappo import MAPPOConfig, OnPolicyRunner
     if OnPolicyRunner is None:
         print("torch not installed: skipped the MAPPO timing")
         return
-    cfg = MAPPOConfig.for_arm("M1-RND", total_steps=a.steps, rollout_steps=a.steps)
-    t0 = time.perf_counter()
-    hist = OnPolicyRunner(make_env(a.env, a.steps), cfg).run()
-    total = time.perf_counter() - t0
-    per_step = total / a.steps
-    print(f"MAPPO M1-RND: rollout {hist[-1]['steps_per_sec']:.0f} steps/s, "
-          f"rollout+update {1 / per_step:.0f} steps/s")
-    print(f"estimated run time for {a.train_steps} steps: "
-          f"{a.train_steps * per_step / 3600:.2f} h (target <= 2 h)")
+
+    config = MAPPOConfig.for_arm("M1-RND", total_steps=args.steps, rollout_steps=args.steps)
+    start = time.perf_counter()
+    history = OnPolicyRunner(make_env(args.env, args.steps), config).run()
+    seconds_per_step = (time.perf_counter() - start) / args.steps
+
+    print(f"MAPPO M1-RND: rollout {history[-1]['steps_per_sec']:.0f} steps/s, "
+          f"rollout+update {1 / seconds_per_step:.0f} steps/s")
+    print(f"estimated run time for {args.train_steps} steps: "
+          f"{args.train_steps * seconds_per_step / 3600:.2f} h (target <= 2 h)")
 
 
 if __name__ == "__main__":

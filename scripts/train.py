@@ -33,40 +33,46 @@ def run(arm: str, seed: int, steps: int, env_name: str = "toy", episode_steps: i
         out_dir: str = "runs", **overrides) -> str:
     if OnPolicyRunner is None:
         raise SystemExit("training needs torch: see the Setup section of README.md")
+
     os.makedirs(out_dir, exist_ok=True)
     tag = f"{arm}_s{seed}"
     log_path = os.path.join(out_dir, f"{tag}.jsonl")
     env = make_env(env_name, episode_steps)
-    cfg = MAPPOConfig.for_arm(arm, seed=seed, total_steps=steps, **overrides)
-    with open(log_path, "w") as f:
-        f.write(json.dumps({"config": cfg.to_dict(), "env": env_name}) + "\n")
+    config = MAPPOConfig.for_arm(arm, seed=seed, total_steps=steps, **overrides)
+
+    with open(log_path, "w") as log_file:
+        # first line: the full config; then one line per PPO update
+        log_file.write(json.dumps({"config": config.to_dict(), "env": env_name}) + "\n")
 
         def log(stats):
-            f.write(json.dumps(stats) + "\n")
-            f.flush()
+            log_file.write(json.dumps(stats) + "\n")
+            log_file.flush()
             print(f"[{tag}] update {stats['update']:4d} steps {stats['env_steps']:7d} "
                   f"ret {stats['ep_return_mean']} sps {stats['steps_per_sec']:.0f}")
 
-        t0 = time.time()
-        runner = OnPolicyRunner(env, cfg, logger=log)
+        start = time.time()
+        runner = OnPolicyRunner(env, config, logger=log)
         runner.run()
-    ck = os.path.join(out_dir, f"{tag}.pt")
-    runner.save(ck)
-    print(f"[{tag}] done in {time.time() - t0:.0f}s -> {ck}")
-    return ck
+
+    checkpoint_path = os.path.join(out_dir, f"{tag}.pt")
+    runner.save(checkpoint_path)
+    print(f"[{tag}] done in {time.time() - start:.0f}s -> {checkpoint_path}")
+    return checkpoint_path
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--arm", choices=sorted(ARMS), default="M0")
-    ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--steps", type=int, default=20_000)
-    ap.add_argument("--env", choices=["toy", "citylearn"], default="toy")
-    ap.add_argument("--episode-steps", type=int, default=168)
-    ap.add_argument("--rollout-steps", type=int, default=1000)
-    ap.add_argument("--out", default="runs")
-    a = ap.parse_args()
-    run(a.arm, a.seed, a.steps, a.env, a.episode_steps, a.out, rollout_steps=a.rollout_steps)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--arm", choices=sorted(ARMS), default="M0")
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--steps", type=int, default=20_000)
+    parser.add_argument("--env", choices=["toy", "citylearn"], default="toy")
+    parser.add_argument("--episode-steps", type=int, default=168)
+    parser.add_argument("--rollout-steps", type=int, default=1000)
+    parser.add_argument("--out", default="runs")
+    args = parser.parse_args()
+
+    run(args.arm, args.seed, args.steps, args.env, args.episode_steps, args.out,
+        rollout_steps=args.rollout_steps)
 
 
 if __name__ == "__main__":

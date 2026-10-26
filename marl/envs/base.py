@@ -58,9 +58,9 @@ class EnvContractError(AssertionError):
     pass
 
 
-def _check(cond: bool, msg: str) -> None:
-    if not cond:
-        raise EnvContractError(msg)
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise EnvContractError(message)
 
 
 def check_env_contract(env, n_steps: int = 5, seed: int = 0) -> None:
@@ -69,51 +69,61 @@ def check_env_contract(env, n_steps: int = 5, seed: int = 0) -> None:
     Runs ``n_steps`` steps with zero actions; leaves the env mid-episode.
     """
     for attr in ("n_agents", "obs_dims", "action_dims", "state_dim"):
-        _check(hasattr(env, attr), f"env is missing attribute {attr!r}")
-    n = env.n_agents
-    _check(isinstance(n, int) and n >= 2, "n_agents must be an int >= 2")
-    _check(len(env.obs_dims) == n, "obs_dims must have one entry per agent")
-    _check(len(env.action_dims) == n, "action_dims must have one entry per agent")
+        _require(hasattr(env, attr), f"env is missing attribute {attr!r}")
 
-    out = env.reset(seed=seed)
-    _check(isinstance(out, tuple) and len(out) == 2, "reset must return (obs, info)")
-    obs, info = out
-    _check(isinstance(info, dict), "reset info must be a dict")
+    n_agents = env.n_agents
+    _require(isinstance(n_agents, int) and n_agents >= 2, "n_agents must be an int >= 2")
+    _require(len(env.obs_dims) == n_agents, "obs_dims must have one entry per agent")
+    _require(len(env.action_dims) == n_agents, "action_dims must have one entry per agent")
 
-    def check_obs(o, where):
-        _check(len(o) == n, f"{where}: expected {n} observations, got {len(o)}")
-        for i, oi in enumerate(o):
-            a = np.asarray(oi, dtype=np.float64)
-            _check(a.ndim == 1, f"{where}: obs[{i}] must be 1-D")
-            _check(a.shape[0] == env.obs_dims[i],
-                   f"{where}: obs[{i}] has length {a.shape[0]}, obs_dims says {env.obs_dims[i]}")
-            _check(np.all(np.isfinite(a)), f"{where}: obs[{i}] has non-finite values")
+    reset_result = env.reset(seed=seed)
+    _require(isinstance(reset_result, tuple) and len(reset_result) == 2,
+             "reset must return (obs, info)")
+    obs, info = reset_result
+    _require(isinstance(info, dict), "reset info must be a dict")
 
-    def check_soc_state(where):
-        s = np.asarray(env.soc(), dtype=np.float64)
-        _check(s.shape == (n,), f"{where}: soc() must have shape ({n},), got {s.shape}")
-        _check(np.all((s >= -1e-6) & (s <= 1 + 1e-6)), f"{where}: soc() outside [0, 1]: {s}")
-        g = np.asarray(env.global_state(), dtype=np.float64)
-        _check(g.shape == (env.state_dim,),
-               f"{where}: global_state() shape {g.shape}, state_dim says {env.state_dim}")
-        _check(np.all(np.isfinite(g)), f"{where}: global_state() has non-finite values")
+    def check_obs(obs_list, where):
+        _require(len(obs_list) == n_agents,
+                 f"{where}: expected {n_agents} observations, got {len(obs_list)}")
+        for agent, agent_obs in enumerate(obs_list):
+            agent_obs = np.asarray(agent_obs, dtype=np.float64)
+            _require(agent_obs.ndim == 1, f"{where}: obs[{agent}] must be 1-D")
+            _require(agent_obs.shape[0] == env.obs_dims[agent],
+                     f"{where}: obs[{agent}] has length {agent_obs.shape[0]}, "
+                     f"obs_dims says {env.obs_dims[agent]}")
+            _require(np.all(np.isfinite(agent_obs)),
+                     f"{where}: obs[{agent}] has non-finite values")
+
+    def check_soc_and_state(where):
+        soc = np.asarray(env.soc(), dtype=np.float64)
+        _require(soc.shape == (n_agents,),
+                 f"{where}: soc() must have shape ({n_agents},), got {soc.shape}")
+        # small tolerance for float rounding at the bounds
+        _require(np.all((soc >= -1e-6) & (soc <= 1 + 1e-6)), f"{where}: soc() outside [0, 1]: {soc}")
+
+        state = np.asarray(env.global_state(), dtype=np.float64)
+        _require(state.shape == (env.state_dim,),
+                 f"{where}: global_state() shape {state.shape}, state_dim says {env.state_dim}")
+        _require(np.all(np.isfinite(state)), f"{where}: global_state() has non-finite values")
 
     check_obs(obs, "reset")
-    check_soc_state("reset")
+    check_soc_and_state("reset")
 
-    for t in range(n_steps):
-        actions = [np.zeros(d, dtype=np.float32) for d in env.action_dims]
-        res = env.step(actions)
-        _check(isinstance(res, tuple) and len(res) == 5,
-               "step must return (obs, reward, terminated, truncated, info)")
-        obs, reward, terminated, truncated, info = res
-        _check(np.ndim(reward) == 0,
-               f"step reward must be ONE shared scalar, got shape {np.shape(reward)}")
-        _check(np.isfinite(float(reward)), "step reward is not finite")
-        _check(isinstance(bool(terminated), bool) and isinstance(bool(truncated), bool),
-               "terminated/truncated must be bools")
-        _check(isinstance(info, dict), "step info must be a dict")
-        check_obs(obs, f"step {t}")
+    for step in range(n_steps):
+        zero_actions = [np.zeros(dim, dtype=np.float32) for dim in env.action_dims]
+        step_result = env.step(zero_actions)
+        _require(isinstance(step_result, tuple) and len(step_result) == 5,
+                 "step must return (obs, reward, terminated, truncated, info)")
+
+        obs, reward, terminated, truncated, info = step_result
+        _require(np.ndim(reward) == 0,
+                 f"step reward must be ONE shared scalar, got shape {np.shape(reward)}")
+        _require(np.isfinite(float(reward)), "step reward is not finite")
+        _require(np.ndim(terminated) == 0 and np.ndim(truncated) == 0,
+                 "terminated/truncated must be single bools")
+        _require(isinstance(info, dict), "step info must be a dict")
+        check_obs(obs, f"step {step}")
+
         if terminated or truncated:
             break
-        check_soc_state(f"step {t}")
+        check_soc_and_state(f"step {step}")

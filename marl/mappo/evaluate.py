@@ -51,44 +51,56 @@ def evaluate(
         return    float
         kpis      ``on_episode_end(env)`` (Andrea's KPIs), or None
     """
-    n = env.n_agents
+    n_agents = env.n_agents
     records = []
-    for r in range(n_replicates):
+    for replicate in range(n_replicates):
+        # fresh channel per replicate: same p, independent drops
         channel = schedule = None
         if use_messages:
-            channel = PeerSoCChannel(n, p, seed=np.random.SeedSequence([channel_seed, r]),
+            channel = PeerSoCChannel(n_agents, p,
+                                     seed=np.random.SeedSequence([channel_seed, replicate]),
                                      force_mask=force_mask)
             schedule = DeliverySchedule("fixed", p=p)
         menv = MessageEnv(env, use_messages, channel, schedule, preprocessor, critic,
                           update_normalizers=False, auto_reset=False)
-        obs, _ = menv.reset(seed=env_seed)
-        acts, socs, dels, rews, infos, energy = [], [], [], [], [], []
-        t = 0
+
+        # same env seed every replicate -> identical outages and window
+        actor_inputs, _ = menv.reset(seed=env_seed)
+
+        actions_log, soc_log, delivered_log = [], [], []
+        rewards_log, infos_log, energy_log = [], [], []
+        n_steps = 0
         while True:
-            a, _ = policy.act(obs, deterministic=deterministic)
-            a = np.clip(np.asarray(a, dtype=np.float32).reshape(n, -1), -1.0, 1.0)
-            socs.append(menv.last_soc.copy())
-            dels.append(menv.last_delivered.copy() if use_messages else None)
-            obs, _, rew, done, _, info = menv.step(a)
-            acts.append(a[:, 0])
-            rews.append(float(rew[0, 0]))
-            infos.append(info)
-            energy.append(info.get("battery_energy"))
-            t += 1
-            if done or (max_steps is not None and t >= max_steps):
+            actions, _ = policy.act(actor_inputs, deterministic=deterministic)
+            actions = np.clip(np.asarray(actions, dtype=np.float32).reshape(n_agents, -1),
+                              -1.0, 1.0)
+            # record the state the agents acted in, before stepping
+            soc_log.append(menv.last_soc.copy())
+            delivered_log.append(menv.last_delivered.copy() if use_messages else None)
+
+            actor_inputs, _, rewards, done, _, info = menv.step(actions)
+            actions_log.append(actions[:, 0])
+            rewards_log.append(float(rewards[0, 0]))   # shared, so agent 0's copy
+            infos_log.append(info)
+            energy_log.append(info.get("battery_energy"))
+
+            n_steps += 1
+            if done or (max_steps is not None and n_steps >= max_steps):
                 break
+
+        has_energy = all(energy is not None for energy in energy_log)
         records.append({
             "p": p if use_messages else None,
             "force_mask": force_mask,
-            "replicate": r,
-            "actions": np.stack(acts),
-            "battery_energy": (np.stack([np.asarray(e, np.float32) for e in energy])
-                               if all(e is not None for e in energy) else None),
-            "soc": np.stack(socs),
-            "delivered": np.stack(dels) if use_messages else None,
-            "rewards": np.asarray(rews, dtype=np.float32),
-            "infos": infos,
-            "return": float(np.sum(rews)),
+            "replicate": replicate,
+            "actions": np.stack(actions_log),
+            "battery_energy": (np.stack([np.asarray(e, np.float32) for e in energy_log])
+                               if has_energy else None),
+            "soc": np.stack(soc_log),
+            "delivered": np.stack(delivered_log) if use_messages else None,
+            "rewards": np.asarray(rewards_log, dtype=np.float32),
+            "infos": infos_log,
+            "return": float(np.sum(rewards_log)),
             "kpis": on_episode_end(env) if on_episode_end else None,
         })
     return records
@@ -102,5 +114,5 @@ class RandomPolicy:
         self.rng = np.random.default_rng(seed)
 
     def act(self, actor_inputs, deterministic=False):
-        a = self.rng.uniform(-1, 1, (self.n_agents, max(self.action_dims))).astype(np.float32)
-        return a, np.zeros(self.n_agents, np.float32)
+        actions = self.rng.uniform(-1, 1, (self.n_agents, max(self.action_dims)))
+        return actions.astype(np.float32), np.zeros(self.n_agents, np.float32)

@@ -1,0 +1,22 @@
+# Install PyTorch first (README, Setup step 2), then:
+#     pip install -r requirements.txt
+# Versions are pinned to the team's tested environment. Python 3.10-3.12
+# (numpy 1.26 has no wheels for 3.13; torch 2.10 needs 3.10+).
+
+# Simulator. CityLearn also requires torch and torchvision, which step 2 installs.
+citylearn==3.0.2
+numpy==1.26.4          # CityLearn requires numpy < 2
+gymnasium==0.28.1      # CityLearn requires gymnasium <= 0.28.1
+pandas==2.3.3
+scikit-learn==1.2.2    # CityLearn requires scikit-learn <= 1.2.2
+openstudio==3.10.0
+doe_xstock==2.0.0
+simplejson==4.1.2
+PyYAML==6.0.3
+
+# Analysis: statistics and plots
+scipy==1.15.3
+matplotlib==3.10.7
+
+# Tests
+pytest==9.1.1

@@ -30,9 +30,9 @@ from .spaces import Box
 def build_actor_inputs(local_obs, messages: Optional[np.ndarray]):
     """o~_i = [o_i, m_-i]; just o_i when messages is None."""
     if messages is None:
-        return [np.asarray(o, dtype=np.float32) for o in local_obs]
-    return [np.concatenate([np.asarray(o, dtype=np.float32), messages[i]])
-            for i, o in enumerate(local_obs)]
+        return [np.asarray(agent_obs, dtype=np.float32) for agent_obs in local_obs]
+    return [np.concatenate([np.asarray(agent_obs, dtype=np.float32), messages[agent]])
+            for agent, agent_obs in enumerate(local_obs)]
 
 
 class MessageEnv:
@@ -52,23 +52,27 @@ class MessageEnv:
             raise ValueError("message arms need a channel and a schedule")
         if critic not in ("central", "local"):
             raise ValueError("critic must be 'central' or 'local'")
+
         self.env = env
         self.n_agents = env.n_agents
         self.use_messages = use_messages
         self.channel, self.schedule = channel, schedule
-        self.pre = preprocessor or Preprocessor(env.obs_dims, env.state_dim, enabled=False)
+        self.preprocessor = preprocessor or Preprocessor(env.obs_dims, env.state_dim,
+                                                         enabled=False)
         self.critic = critic
         self.env_seed_rng = np.random.default_rng(env_seed)
         self.update_normalizers = update_normalizers
         self.auto_reset = auto_reset
 
-        msg = message_dim(self.n_agents) if use_messages else 0
-        self.actor_dims = [d + msg for d in env.obs_dims]
+        # Input sizes and on-policy space objects (critic: global state, or the
+        # agent's own input for IPPO)
+        message_len = message_dim(self.n_agents) if use_messages else 0
+        self.actor_dims = [dim + message_len for dim in env.obs_dims]
         self.critic_dims = ([env.state_dim] * self.n_agents if critic == "central"
                             else list(self.actor_dims))
-        self.observation_space = [Box(-np.inf, np.inf, (d,)) for d in self.actor_dims]
-        self.share_observation_space = [Box(-np.inf, np.inf, (d,)) for d in self.critic_dims]
-        self.action_space = [Box(-1.0, 1.0, (a,)) for a in env.action_dims]
+        self.observation_space = [Box(-np.inf, np.inf, (dim,)) for dim in self.actor_dims]
+        self.share_observation_space = [Box(-np.inf, np.inf, (dim,)) for dim in self.critic_dims]
+        self.action_space = [Box(-1.0, 1.0, (dim,)) for dim in env.action_dims]
 
         self.reset_seeds: list = []
         self.episodes: list = []
@@ -77,80 +81,97 @@ class MessageEnv:
         self.p: Optional[float] = None
 
     # ------------------------------------------------------------------
-    def _inputs(self, obs):
+    def _build_inputs(self, obs):
+        """Actor and critic inputs for the state the agents are about to act in."""
         soc = np.asarray(self.env.soc(), dtype=np.float32)
         self.last_soc = soc
-        local = self.pre.local(obs, self.update_normalizers)
-        msgs = None
+        local_obs = self.preprocessor.normalize_local_obs(obs, self.update_normalizers)
+
+        messages = None
         if self.use_messages:
-            msgs = self.channel.transmit(soc)
+            messages = self.channel.transmit(soc)
             self.last_delivered = self.channel.last_delivered.copy()
-            self._ep["delivered"] += int(self.last_delivered.sum())
-            self._ep["links"] += self.n_agents * (self.n_agents - 1)
-        actor_in = build_actor_inputs(local, msgs)
+            self._episode_stats["delivered"] += int(self.last_delivered.sum())
+            self._episode_stats["links"] += self.n_agents * (self.n_agents - 1)
+
+        actor_inputs = build_actor_inputs(local_obs, messages)
         if self.critic == "central":
-            state = self.pre.state(self.env.global_state(), self.update_normalizers)
-            share = [state] * self.n_agents
+            state = self.preprocessor.normalize_state(self.env.global_state(),
+                                                      self.update_normalizers)
+            critic_inputs = [state] * self.n_agents
         else:
-            share = actor_in
-        return actor_in, share
+            critic_inputs = actor_inputs
+        return actor_inputs, critic_inputs
 
     def reset(self, seed: Optional[int] = None):
-        """Start an episode; returns (obs list, share_obs list)."""
+        """Start an episode; returns (actor inputs, critic inputs)."""
         if self.use_messages:
             self.p = self.schedule.sample()
             self.channel.set_p(self.p)
+
+        # seeds come from a stream that depends only on the run seed -> paired across arms
         if seed is None:
             seed = int(self.env_seed_rng.integers(2 ** 31 - 1))
         self.reset_seeds.append(int(seed))
         obs, _ = self.env.reset(seed=int(seed))
-        self._ep = {"return": 0.0, "length": 0, "p": self.p, "delivered": 0, "links": 0}
-        return self._inputs(obs)
+
+        self._episode_stats = {"return": 0.0, "length": 0, "p": self.p,
+                               "delivered": 0, "links": 0}
+        return self._build_inputs(obs)
 
     def step(self, actions):
         """actions: (n, a) array or list. Returns
-        (obs, share_obs, rewards (n, 1), done, truncated, info).
+        (actor inputs, critic inputs, rewards (n, 1), done, truncated, info).
 
-        With ``auto_reset`` the returned obs/share_obs already belong to the
-        next episode when ``done`` (on-policy's convention). The finished
+        With ``auto_reset`` the returned inputs already belong to the next
+        episode when ``done`` (on-policy's convention). The finished
         episode's summary is in ``info["episode"]``.
         """
-        acts = [np.clip(np.asarray(a, dtype=np.float32).reshape(-1), -1.0, 1.0)
-                for a in actions]
-        obs, reward, terminated, truncated, info = self.env.step(acts)
+        clipped_actions = [np.clip(np.asarray(a, dtype=np.float32).reshape(-1), -1.0, 1.0)
+                           for a in actions]
+        obs, reward, terminated, truncated, info = self.env.step(clipped_actions)
         info = dict(info)
-        self._ep["return"] += float(reward)
-        self._ep["length"] += 1
+
+        self._episode_stats["return"] += float(reward)
+        self._episode_stats["length"] += 1
         done = bool(terminated or truncated)
+        # the shared reward, copied for every agent's buffer
         rewards = np.full((self.n_agents, 1), float(reward), dtype=np.float32)
-        if done:
-            ep = dict(self._ep)
-            ep["delivery_rate"] = ep["delivered"] / ep["links"] if ep["links"] else None
-            self.episodes.append(ep)
-            info["episode"] = ep
-            if self.auto_reset:
-                actor_in, share = self.reset()
-                return actor_in, share, rewards, done, bool(truncated and not terminated), info
-            return None, None, rewards, done, bool(truncated and not terminated), info
-        actor_in, share = self._inputs(obs)
-        return actor_in, share, rewards, done, False, info
+
+        if not done:
+            actor_inputs, critic_inputs = self._build_inputs(obs)
+            return actor_inputs, critic_inputs, rewards, done, False, info
+
+        finished = dict(self._episode_stats)
+        finished["delivery_rate"] = (finished["delivered"] / finished["links"]
+                                     if finished["links"] else None)
+        self.episodes.append(finished)
+        info["episode"] = finished
+
+        # a time-limit cut, not a true terminal: on-policy's bad_masks use this flag
+        time_limit = bool(truncated and not terminated)
+        if self.auto_reset:
+            actor_inputs, critic_inputs = self.reset()
+            return actor_inputs, critic_inputs, rewards, done, time_limit, info
+        return None, None, rewards, done, time_limit, info
 
 
-def make_message_env(env, cfg, preprocessor: Optional[Preprocessor] = None,
+def make_message_env(env, config, preprocessor: Optional[Preprocessor] = None,
                      update_normalizers: bool = True) -> MessageEnv:
-    """MessageEnv for training an arm described by ``MAPPOConfig`` ``cfg``."""
+    """MessageEnv for training an arm described by a ``MAPPOConfig``."""
     from .config import STREAM_CHANNEL, STREAM_ENV, STREAM_SCHEDULE, stream
 
     channel = schedule = None
-    if cfg.use_messages:
-        channel = PeerSoCChannel(env.n_agents, 1.0, seed=stream(cfg.seed, STREAM_CHANNEL),
-                                 force_mask=cfg.force_mask_train)
-        if cfg.train_schedule == "fixed":
-            schedule = DeliverySchedule("fixed", p=cfg.train_p)
+    if config.use_messages:
+        channel = PeerSoCChannel(env.n_agents, 1.0, seed=stream(config.seed, STREAM_CHANNEL),
+                                 force_mask=config.force_mask_train)
+        if config.train_schedule == "fixed":
+            schedule = DeliverySchedule("fixed", p=config.train_p)
         else:
-            schedule = DeliverySchedule("random", choices=tuple(cfg.rnd_p_choices),
-                                        seed=stream(cfg.seed, STREAM_SCHEDULE))
-    pre = preprocessor or Preprocessor(env.obs_dims, env.state_dim, cfg.normalize_obs,
-                                       cfg.obs_clip)
-    return MessageEnv(env, cfg.use_messages, channel, schedule, pre, cfg.critic,
-                      stream(cfg.seed, STREAM_ENV), update_normalizers)
+            schedule = DeliverySchedule("random", choices=tuple(config.rnd_p_choices),
+                                        seed=stream(config.seed, STREAM_SCHEDULE))
+
+    preprocessor = preprocessor or Preprocessor(env.obs_dims, env.state_dim,
+                                                config.normalize_obs, config.obs_clip)
+    return MessageEnv(env, config.use_messages, channel, schedule, preprocessor, config.critic,
+                      stream(config.seed, STREAM_ENV), update_normalizers)

@@ -17,6 +17,8 @@ realizations.
 
 ``force_mask=True`` is the mask check from Section 6: the mask is always 1,
 so a dropped message looks like a real SoC of 0.
+
+``p`` is the delivery probability, named as in the proposal.
 """
 from __future__ import annotations
 
@@ -34,7 +36,7 @@ EVAL_P_LEVELS: tuple = (1.0, 0.9, 0.5, 0.0)
 
 def peer_indices(n_agents: int, receiver: int) -> list:
     """Peers of ``receiver`` in the order their messages appear in its input."""
-    return [j for j in range(n_agents) if j != receiver]
+    return [peer for peer in range(n_agents) if peer != receiver]
 
 
 def message_dim(n_agents: int) -> int:
@@ -54,13 +56,16 @@ class PeerSoCChannel:
     ) -> None:
         if n_agents < 2:
             raise ValueError("a message channel needs at least two agents")
+
         self.n_agents = int(n_agents)
         self.force_mask = bool(force_mask)
         self.rng = np.random.default_rng(seed)
         self.set_p(p)
-        # Pre-computed receiver -> peer index table, shape (n, n-1).
-        self._peers = np.array(
-            [peer_indices(self.n_agents, i) for i in range(self.n_agents)], dtype=int
+
+        # Row i lists receiver i's peers in message order, shape (n, n-1).
+        self._peer_table = np.array(
+            [peer_indices(self.n_agents, receiver) for receiver in range(self.n_agents)],
+            dtype=int,
         )
         self.last_delivered: Optional[np.ndarray] = None
 
@@ -81,8 +86,8 @@ class PeerSoCChannel:
         consumed per directed link per step whatever p is, so two channels
         with the same seed but different p stay aligned step by step.
         """
-        u = self.rng.random((self.n_agents, self.n_agents))
-        delivered = u < self.p
+        uniform_draws = self.rng.random((self.n_agents, self.n_agents))
+        delivered = uniform_draws < self.p
         np.fill_diagonal(delivered, False)
         return delivered
 
@@ -94,19 +99,25 @@ class PeerSoCChannel:
         soc = np.asarray(soc, dtype=np.float32).reshape(-1)
         if soc.shape[0] != self.n_agents:
             raise ValueError(f"expected {self.n_agents} SoC values, got {soc.shape[0]}")
+
         delivered = self.sample_delivery()
         self.last_delivered = delivered
         return self.encode(soc, delivered)
 
     def encode(self, soc: np.ndarray, delivered: np.ndarray) -> np.ndarray:
-        rows = np.arange(self.n_agents)[:, None]
-        got = delivered[rows, self._peers].astype(np.float32)  # (n, n-1)
-        values = soc[self._peers] * got                        # 0 when dropped
-        mask = np.ones_like(got) if self.force_mask else got
-        out = np.empty((self.n_agents, 2 * (self.n_agents - 1)), dtype=np.float32)
-        out[:, 0::2] = values
-        out[:, 1::2] = mask
-        return out
+        """Turn true SoCs and a delivery matrix into each receiver's message block."""
+        # (n, n-1): 1.0 where receiver i got peer j's message, laid out like _peer_table
+        receiver_rows = np.arange(self.n_agents)[:, None]
+        arrived = delivered[receiver_rows, self._peer_table].astype(np.float32)
+
+        soc_values = soc[self._peer_table] * arrived  # 0 when dropped
+        mask = np.ones_like(arrived) if self.force_mask else arrived
+
+        # Interleave per peer: [SoC_j0, mask_j0, SoC_j1, mask_j1, ...]
+        messages = np.empty((self.n_agents, 2 * (self.n_agents - 1)), dtype=np.float32)
+        messages[:, 0::2] = soc_values
+        messages[:, 1::2] = mask
+        return messages
 
 
 @dataclass
@@ -127,12 +138,17 @@ class DeliverySchedule:
             raise ValueError(f"unknown schedule mode {self.mode!r}")
         if self.mode == "random" and len(self.choices) == 0:
             raise ValueError("random schedule needs at least one choice")
-        for c in (self.choices if self.mode == "random" else (self.p,)):
-            if not 0.0 <= float(c) <= 1.0:
-                raise ValueError(f"delivery probability out of range: {c}")
+
+        probs_used = self.choices if self.mode == "random" else (self.p,)
+        for prob in probs_used:
+            if not 0.0 <= float(prob) <= 1.0:
+                raise ValueError(f"delivery probability out of range: {prob}")
+
         self.rng = np.random.default_rng(self.seed)
 
     def sample(self) -> float:
         if self.mode == "fixed":
             return float(self.p)
-        return float(self.choices[int(self.rng.integers(len(self.choices)))])
+
+        choice_index = int(self.rng.integers(len(self.choices)))
+        return float(self.choices[choice_index])

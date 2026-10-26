@@ -7,44 +7,47 @@ import numpy as np
 
 
 class RunningMeanStd:
-    """Parallel-algorithm running moments (Chan et al.)."""
+    """Running mean and variance, merged batch by batch (Chan et al.'s parallel update)."""
 
     def __init__(self, shape=(), epsilon: float = 1e-4):
         self.mean = np.zeros(shape, dtype=np.float64)
         self.var = np.ones(shape, dtype=np.float64)
-        self.count = float(epsilon)
+        self.count = float(epsilon)   # tiny prior count avoids dividing by zero
 
     def update(self, x) -> None:
-        x = np.asarray(x, dtype=np.float64)
-        x = x.reshape((-1,) + self.mean.shape)
-        b_mean, b_var, b_n = x.mean(axis=0), x.var(axis=0), x.shape[0]
-        delta = b_mean - self.mean
-        tot = self.count + b_n
-        self.mean = self.mean + delta * b_n / tot
-        m2 = self.var * self.count + b_var * b_n + delta ** 2 * self.count * b_n / tot
-        self.var = m2 / tot
-        self.count = tot
+        batch = np.asarray(x, dtype=np.float64).reshape((-1,) + self.mean.shape)
+        batch_mean, batch_var, batch_count = batch.mean(axis=0), batch.var(axis=0), batch.shape[0]
+
+        delta = batch_mean - self.mean
+        total_count = self.count + batch_count
+        self.mean = self.mean + delta * batch_count / total_count
+
+        # combine the two sums of squared deviations, then renormalize
+        combined_m2 = (self.var * self.count + batch_var * batch_count
+                       + delta ** 2 * self.count * batch_count / total_count)
+        self.var = combined_m2 / total_count
+        self.count = total_count
 
     @property
     def std(self):
         return np.sqrt(self.var + 1e-8)
 
     def normalize(self, x, clip: Optional[float] = None):
-        y = (np.asarray(x, dtype=np.float64) - self.mean) / self.std
+        normalized = (np.asarray(x, dtype=np.float64) - self.mean) / self.std
         if clip is not None:
-            y = np.clip(y, -clip, clip)
-        return y.astype(np.float32)
+            normalized = np.clip(normalized, -clip, clip)
+        return normalized.astype(np.float32)
 
-    def denormalize(self, y):
-        return (np.asarray(y, dtype=np.float64) * self.std + self.mean).astype(np.float32)
+    def denormalize(self, normalized):
+        return (np.asarray(normalized, dtype=np.float64) * self.std + self.mean).astype(np.float32)
 
     def state_dict(self) -> dict:
         return {"mean": self.mean.copy(), "var": self.var.copy(), "count": self.count}
 
-    def load_state_dict(self, d: dict) -> None:
-        self.mean = np.asarray(d["mean"], dtype=np.float64).copy()
-        self.var = np.asarray(d["var"], dtype=np.float64).copy()
-        self.count = float(d["count"])
+    def load_state_dict(self, saved: dict) -> None:
+        self.mean = np.asarray(saved["mean"], dtype=np.float64).copy()
+        self.var = np.asarray(saved["var"], dtype=np.float64).copy()
+        self.count = float(saved["count"])
 
 
 class Preprocessor:
@@ -58,36 +61,41 @@ class Preprocessor:
                  clip: float = 10.0):
         self.enabled = enabled
         self.clip = clip
-        self.obs_rms = [RunningMeanStd((d,)) for d in obs_dims]
-        self.state_rms = RunningMeanStd((state_dim,))
+        self.local_obs_stats = [RunningMeanStd((dim,)) for dim in obs_dims]
+        self.state_stats = RunningMeanStd((state_dim,))
 
-    def local(self, obs, update: bool):
-        out = []
-        for rms, o in zip(self.obs_rms, obs):
-            o = np.asarray(o, dtype=np.float32)
+    def normalize_local_obs(self, obs, update: bool):
+        """Normalize each agent's local observation; ``update`` adds it to the statistics."""
+        normalized = []
+        for stats, agent_obs in zip(self.local_obs_stats, obs):
+            agent_obs = np.asarray(agent_obs, dtype=np.float32)
             if not self.enabled:
-                out.append(o)
+                normalized.append(agent_obs)
                 continue
+
             if update:
-                rms.update(o[None])
-            out.append(rms.normalize(o, self.clip))
-        return out
+                stats.update(agent_obs[None])
+            normalized.append(stats.normalize(agent_obs, self.clip))
+        return normalized
 
-    def state(self, s, update: bool):
-        s = np.asarray(s, dtype=np.float32)
+    def normalize_state(self, state, update: bool):
+        """Normalize the critic's global state; ``update`` adds it to the statistics."""
+        state = np.asarray(state, dtype=np.float32)
         if not self.enabled:
-            return s
-        if update:
-            self.state_rms.update(s[None])
-        return self.state_rms.normalize(s, self.clip)
+            return state
 
+        if update:
+            self.state_stats.update(state[None])
+        return self.state_stats.normalize(state, self.clip)
+
+    # "obs" / "state" keys kept so existing checkpoints still load
     def state_dict(self) -> dict:
         return {"enabled": self.enabled, "clip": self.clip,
-                "obs": [r.state_dict() for r in self.obs_rms],
-                "state": self.state_rms.state_dict()}
+                "obs": [stats.state_dict() for stats in self.local_obs_stats],
+                "state": self.state_stats.state_dict()}
 
-    def load_state_dict(self, d: dict) -> None:
-        self.enabled, self.clip = d["enabled"], d["clip"]
-        for r, sd in zip(self.obs_rms, d["obs"]):
-            r.load_state_dict(sd)
-        self.state_rms.load_state_dict(d["state"])
+    def load_state_dict(self, saved: dict) -> None:
+        self.enabled, self.clip = saved["enabled"], saved["clip"]
+        for stats, saved_stats in zip(self.local_obs_stats, saved["obs"]):
+            stats.load_state_dict(saved_stats)
+        self.state_stats.load_state_dict(saved["state"])

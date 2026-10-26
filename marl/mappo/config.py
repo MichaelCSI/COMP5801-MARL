@@ -19,6 +19,7 @@ import numpy as np
 
 from ..comms.channel import RND_P_CHOICES
 
+# Arm name -> the only settings that differ between arms
 ARMS = {
     # primary baseline: MAPPO without messages
     "M0": dict(use_messages=False, critic="central", train_schedule="none"),
@@ -39,6 +40,7 @@ STREAM_TORCH, STREAM_ENV, STREAM_CHANNEL, STREAM_SCHEDULE, STREAM_EVAL = 0, 1, 2
 
 
 def stream(seed: int, key: int) -> np.random.SeedSequence:
+    """Independent random stream ``key`` (one of the STREAM_* constants) for a run seed."""
     return np.random.SeedSequence([int(seed), int(key)])
 
 
@@ -89,21 +91,23 @@ class MAPPOConfig:
     def for_arm(cls, arm: str, **overrides) -> "MAPPOConfig":
         if arm not in ARMS:
             raise ValueError(f"unknown arm {arm!r}; choose from {sorted(ARMS)}")
-        cfg = cls(arm=arm, **ARMS[arm])
-        return replace(cfg, **overrides) if overrides else cfg
+        config = cls(arm=arm, **ARMS[arm])
+        return replace(config, **overrides) if overrides else config
 
     def validate(self) -> None:
         if self.critic not in ("central", "local"):
             raise ValueError("critic must be 'central' or 'local'")
         if self.train_schedule not in ("none", "fixed", "random"):
             raise ValueError("train_schedule must be none/fixed/random")
+
         if self.use_messages and self.train_schedule == "none":
             raise ValueError("message arms need a training delivery schedule")
         if not self.use_messages and self.train_schedule != "none":
             raise ValueError("no-message arms must use train_schedule='none'")
-        bad = set(self.onpolicy_overrides) & set(FIXED_ONPOLICY_ARGS)
-        if bad:
-            raise ValueError(f"these on-policy args are fixed by the design: {sorted(bad)}")
+
+        locked = set(self.onpolicy_overrides) & set(FIXED_ONPOLICY_ARGS)
+        if locked:
+            raise ValueError(f"these on-policy args are fixed by the design: {sorted(locked)}")
 
     def to_onpolicy_args(self):
         """``argparse.Namespace`` for on-policy's R_MAPPO / R_MAPPOPolicy / buffer."""
@@ -111,18 +115,20 @@ class MAPPOConfig:
 
         self.validate()
         args = get_onpolicy_parser().parse_args([])   # on-policy reference defaults
-        for k, v in FIXED_ONPOLICY_ARGS.items():
-            setattr(args, k, v)
+        for name, value in FIXED_ONPOLICY_ARGS.items():
+            setattr(args, name, value)
+
         args.use_centralized_V = self.critic == "central"
         args.seed = int(self.seed)
         args.episode_length = int(self.rollout_steps)
         args.num_env_steps = int(self.total_steps)
         args.cuda = self.device != "cpu"
         args.experiment_name = f"{self.arm}_s{self.seed}"
-        for k, v in self.onpolicy_overrides.items():
-            if not hasattr(args, k):
-                raise ValueError(f"on-policy has no argument {k!r}")
-            setattr(args, k, v)
+
+        for name, value in self.onpolicy_overrides.items():
+            if not hasattr(args, name):
+                raise ValueError(f"on-policy has no argument {name!r}")
+            setattr(args, name, value)
         return args
 
     def to_dict(self) -> dict:
