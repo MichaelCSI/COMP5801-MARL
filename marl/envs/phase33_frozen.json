@@ -1,0 +1,422 @@
+{
+  "dataset": "citylearn_challenge_2023_phase_3_3",
+  "citylearn_version": "3.0.2",
+  "observation_names": [
+    [
+      "day_type",
+      "hour",
+      "outdoor_dry_bulb_temperature",
+      "outdoor_dry_bulb_temperature_predicted_1",
+      "outdoor_dry_bulb_temperature_predicted_2",
+      "outdoor_dry_bulb_temperature_predicted_3",
+      "diffuse_solar_irradiance",
+      "diffuse_solar_irradiance_predicted_1",
+      "diffuse_solar_irradiance_predicted_2",
+      "diffuse_solar_irradiance_predicted_3",
+      "direct_solar_irradiance",
+      "direct_solar_irradiance_predicted_1",
+      "direct_solar_irradiance_predicted_2",
+      "direct_solar_irradiance_predicted_3",
+      "carbon_intensity",
+      "indoor_dry_bulb_temperature",
+      "non_shiftable_load",
+      "solar_generation",
+      "dhw_storage_soc",
+      "electrical_storage_soc",
+      "net_electricity_consumption",
+      "electricity_pricing",
+      "electricity_pricing_predicted_1",
+      "electricity_pricing_predicted_2",
+      "electricity_pricing_predicted_3",
+      "cooling_demand",
+      "dhw_demand",
+      "occupant_count",
+      "power_outage",
+      "indoor_dry_bulb_temperature_cooling_set_point"
+    ],
+    [
+      "day_type",
+      "hour",
+      "outdoor_dry_bulb_temperature",
+      "outdoor_dry_bulb_temperature_predicted_1",
+      "outdoor_dry_bulb_temperature_predicted_2",
+      "outdoor_dry_bulb_temperature_predicted_3",
+      "diffuse_solar_irradiance",
+      "diffuse_solar_irradiance_predicted_1",
+      "diffuse_solar_irradiance_predicted_2",
+      "diffuse_solar_irradiance_predicted_3",
+      "direct_solar_irradiance",
+      "direct_solar_irradiance_predicted_1",
+      "direct_solar_irradiance_predicted_2",
+      "direct_solar_irradiance_predicted_3",
+      "carbon_intensity",
+      "indoor_dry_bulb_temperature",
+      "non_shiftable_load",
+      "solar_generation",
+      "dhw_storage_soc",
+      "electrical_storage_soc",
+      "net_electricity_consumption",
+      "electricity_pricing",
+      "electricity_pricing_predicted_1",
+      "electricity_pricing_predicted_2",
+      "electricity_pricing_predicted_3",
+      "cooling_demand",
+      "dhw_demand",
+      "occupant_count",
+      "power_outage",
+      "indoor_dry_bulb_temperature_cooling_set_point"
+    ],
+    [
+      "day_type",
+      "hour",
+      "outdoor_dry_bulb_temperature",
+      "outdoor_dry_bulb_temperature_predicted_1",
+      "outdoor_dry_bulb_temperature_predicted_2",
+      "outdoor_dry_bulb_temperature_predicted_3",
+      "diffuse_solar_irradiance",
+      "diffuse_solar_irradiance_predicted_1",
+      "diffuse_solar_irradiance_predicted_2",
+      "diffuse_solar_irradiance_predicted_3",
+      "direct_solar_irradiance",
+      "direct_solar_irradiance_predicted_1",
+      "direct_solar_irradiance_predicted_2",
+      "direct_solar_irradiance_predicted_3",
+      "carbon_intensity",
+      "indoor_dry_bulb_temperature",
+      "non_shiftable_load",
+      "solar_generation",
+      "dhw_storage_soc",
+      "electrical_storage_soc",
+      "net_electricity_consumption",
+      "electricity_pricing",
+      "electricity_pricing_predicted_1",
+      "electricity_pricing_predicted_2",
+      "electricity_pricing_predicted_3",
+      "cooling_demand",
+      "dhw_demand",
+      "occupant_count",
+      "power_outage",
+      "indoor_dry_bulb_temperature_cooling_set_point"
+    ],
+    [
+      "day_type",
+      "hour",
+      "outdoor_dry_bulb_temperature",
+      "outdoor_dry_bulb_temperature_predicted_1",
+      "outdoor_dry_bulb_temperature_predicted_2",
+      "outdoor_dry_bulb_temperature_predicted_3",
+      "diffuse_solar_irradiance",
+      "diffuse_solar_irradiance_predicted_1",
+      "diffuse_solar_irradiance_predicted_2",
+      "diffuse_solar_irradiance_predicted_3",
+      "direct_solar_irradiance",
+      "direct_solar_irradiance_predicted_1",
+      "direct_solar_irradiance_predicted_2",
+      "direct_solar_irradiance_predicted_3",
+      "carbon_intensity",
+      "indoor_dry_bulb_temperature",
+      "non_shiftable_load",
+      "solar_generation",
+      "dhw_storage_soc",
+      "electrical_storage_soc",
+      "net_electricity_consumption",
+      "electricity_pricing",
+      "electricity_pricing_predicted_1",
+      "electricity_pricing_predicted_2",
+      "electricity_pricing_predicted_3",
+      "cooling_demand",
+      "dhw_demand",
+      "occupant_count",
+      "power_outage",
+      "indoor_dry_bulb_temperature_cooling_set_point"
+    ],
+    [
+      "day_type",
+      "hour",
+      "outdoor_dry_bulb_temperature",
+      "outdoor_dry_bulb_temperature_predicted_1",
+      "outdoor_dry_bulb_temperature_predicted_2",
+      "outdoor_dry_bulb_temperature_predicted_3",
+      "diffuse_solar_irradiance",
+      "diffuse_solar_irradiance_predicted_1",
+      "diffuse_solar_irradiance_predicted_2",
+      "diffuse_solar_irradiance_predicted_3",
+      "direct_solar_irradiance",
+      "direct_solar_irradiance_predicted_1",
+      "direct_solar_irradiance_predicted_2",
+      "direct_solar_irradiance_predicted_3",
+      "carbon_intensity",
+      "indoor_dry_bulb_temperature",
+      "non_shiftable_load",
+      "solar_generation",
+      "dhw_storage_soc",
+      "electrical_storage_soc",
+      "net_electricity_consumption",
+      "electricity_pricing",
+      "electricity_pricing_predicted_1",
+      "electricity_pricing_predicted_2",
+      "electricity_pricing_predicted_3",
+      "cooling_demand",
+      "dhw_demand",
+      "occupant_count",
+      "power_outage",
+      "indoor_dry_bulb_temperature_cooling_set_point"
+    ],
+    [
+      "day_type",
+      "hour",
+      "outdoor_dry_bulb_temperature",
+      "outdoor_dry_bulb_temperature_predicted_1",
+      "outdoor_dry_bulb_temperature_predicted_2",
+      "outdoor_dry_bulb_temperature_predicted_3",
+      "diffuse_solar_irradiance",
+      "diffuse_solar_irradiance_predicted_1",
+      "diffuse_solar_irradiance_predicted_2",
+      "diffuse_solar_irradiance_predicted_3",
+      "direct_solar_irradiance",
+      "direct_solar_irradiance_predicted_1",
+      "direct_solar_irradiance_predicted_2",
+      "direct_solar_irradiance_predicted_3",
+      "carbon_intensity",
+      "indoor_dry_bulb_temperature",
+      "non_shiftable_load",
+      "solar_generation",
+      "dhw_storage_soc",
+      "electrical_storage_soc",
+      "net_electricity_consumption",
+      "electricity_pricing",
+      "electricity_pricing_predicted_1",
+      "electricity_pricing_predicted_2",
+      "electricity_pricing_predicted_3",
+      "cooling_demand",
+      "dhw_demand",
+      "occupant_count",
+      "power_outage",
+      "indoor_dry_bulb_temperature_cooling_set_point"
+    ]
+  ],
+  "shared_observation_names": [
+    "carbon_intensity",
+    "day_type",
+    "daylight_savings_status",
+    "diffuse_solar_irradiance",
+    "diffuse_solar_irradiance_predicted_1",
+    "diffuse_solar_irradiance_predicted_2",
+    "diffuse_solar_irradiance_predicted_3",
+    "direct_solar_irradiance",
+    "direct_solar_irradiance_predicted_1",
+    "direct_solar_irradiance_predicted_2",
+    "direct_solar_irradiance_predicted_3",
+    "electricity_pricing",
+    "electricity_pricing_predicted_1",
+    "electricity_pricing_predicted_2",
+    "electricity_pricing_predicted_3",
+    "hour",
+    "month",
+    "outdoor_dry_bulb_temperature",
+    "outdoor_dry_bulb_temperature_predicted_1",
+    "outdoor_dry_bulb_temperature_predicted_2",
+    "outdoor_dry_bulb_temperature_predicted_3",
+    "outdoor_relative_humidity",
+    "outdoor_relative_humidity_predicted_1",
+    "outdoor_relative_humidity_predicted_2",
+    "outdoor_relative_humidity_predicted_3"
+  ],
+  "reward_norm": {
+    "cost": 0.24702665381014619,
+    "load_sq": 67.14511365146836,
+    "h_formula": "max(0,L)^2",
+    "controller": "R0 (zero battery action)",
+    "block": [
+      0,
+      1487
+    ],
+    "outage_seed": 0,
+    "n_steps": 1487
+  },
+  "val_seed": 7,
+  "test_seed": 0,
+  "eval_seed_rule": "smallest seed >= 0 with at least one outage hour inside the block",
+  "buildings": [
+    {
+      "name": "Building_1",
+      "battery_capacity_kwh": 4.0,
+      "battery_power_kw": 3.32,
+      "battery_efficiency": 0.95,
+      "battery_power_efficiency_curve": [
+        [
+          0,
+          0.8799999999999999
+        ],
+        [
+          0.3,
+          0.8799999999999999
+        ],
+        [
+          0.7,
+          0.95
+        ],
+        [
+          0.8,
+          0.95
+        ],
+        [
+          1,
+          0.8999999999999999
+        ]
+      ],
+      "battery_depth_of_discharge": 0.8,
+      "pv_kw": 2.4
+    },
+    {
+      "name": "Building_2",
+      "battery_capacity_kwh": 4.0,
+      "battery_power_kw": 3.32,
+      "battery_efficiency": 0.95,
+      "battery_power_efficiency_curve": [
+        [
+          0,
+          0.8799999999999999
+        ],
+        [
+          0.3,
+          0.8799999999999999
+        ],
+        [
+          0.7,
+          0.95
+        ],
+        [
+          0.8,
+          0.95
+        ],
+        [
+          1,
+          0.8999999999999999
+        ]
+      ],
+      "battery_depth_of_discharge": 0.8,
+      "pv_kw": 1.2
+    },
+    {
+      "name": "Building_3",
+      "battery_capacity_kwh": 3.3,
+      "battery_power_kw": 1.61,
+      "battery_efficiency": 0.96,
+      "battery_power_efficiency_curve": [
+        [
+          0,
+          0.8899999999999999
+        ],
+        [
+          0.3,
+          0.8899999999999999
+        ],
+        [
+          0.7,
+          0.96
+        ],
+        [
+          0.8,
+          0.96
+        ],
+        [
+          1,
+          0.9099999999999999
+        ]
+      ],
+      "battery_depth_of_discharge": 0.8,
+      "pv_kw": 2.4
+    },
+    {
+      "name": "Building_4",
+      "battery_capacity_kwh": 3.3,
+      "battery_power_kw": 1.61,
+      "battery_efficiency": 0.96,
+      "battery_power_efficiency_curve": [
+        [
+          0,
+          0.8899999999999999
+        ],
+        [
+          0.3,
+          0.8899999999999999
+        ],
+        [
+          0.7,
+          0.96
+        ],
+        [
+          0.8,
+          0.96
+        ],
+        [
+          1,
+          0.9099999999999999
+        ]
+      ],
+      "battery_depth_of_discharge": 0.8,
+      "pv_kw": 2.8
+    },
+    {
+      "name": "Building_5",
+      "battery_capacity_kwh": 4.0,
+      "battery_power_kw": 3.32,
+      "battery_efficiency": 0.95,
+      "battery_power_efficiency_curve": [
+        [
+          0,
+          0.8799999999999999
+        ],
+        [
+          0.3,
+          0.8799999999999999
+        ],
+        [
+          0.7,
+          0.95
+        ],
+        [
+          0.8,
+          0.95
+        ],
+        [
+          1,
+          0.8999999999999999
+        ]
+      ],
+      "battery_depth_of_discharge": 0.8,
+      "pv_kw": 2.8
+    },
+    {
+      "name": "Building_6",
+      "battery_capacity_kwh": 3.3,
+      "battery_power_kw": 1.61,
+      "battery_efficiency": 0.96,
+      "battery_power_efficiency_curve": [
+        [
+          0,
+          0.8899999999999999
+        ],
+        [
+          0.3,
+          0.8899999999999999
+        ],
+        [
+          0.7,
+          0.96
+        ],
+        [
+          0.8,
+          0.96
+        ],
+        [
+          1,
+          0.9099999999999999
+        ]
+      ],
+      "battery_depth_of_discharge": 0.8,
+      "pv_kw": 2.8
+    }
+  ]
+}
