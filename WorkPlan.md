@@ -1,47 +1,142 @@
-# Part A: ...
+# Part A: CityLearn wrapper, reward, KPIs, references, split, outages
 
-@Andrea, based on the part B setup, part A would connect with it via:
+CityLearn wrapper, reward, KPIs, references R0 and R1, split and outage seeding. Report: environment and reward sections; optional mask arm (M1-RND-NM).
 
-`marl.envs.check_env_contract(env)`:
+## 1. What was built
 
+`marl.envs.district_env.DistrictBatteryEnv` is the project environment. It
+extends Michael's `CityLearnAdapter`, so the split windows, window seeds,
+truncation at the window end, `battery_energy`, `soc()` and `global_state()`
+are unchanged and still covered by `test_citylearn_adapter.py`. It passes
+`check_env_contract` on every split, and `scripts/train.py --env citylearn` now
+builds it (`--env citylearn-temp` keeps the old adapter).
+
+| Piece | Proposal | Where |
+|-------|----------|-------|
+| Shared reward r = -(α ĉ + β ĥ), c = price · max(0, L), h = max(0, L)², normalized by R0 on the training block | section 2 | `marl/envs/reward.py` |
+| Export check: how often L < 0 under R0/R1 | feedback | `scripts/export_check.py` → `results/export_check.json` |
+| Peer-SoC informativeness data: own observation X and peers' SoC Y per agent | feedback | `marl/envs/features.py` |
+| R0 norms, frozen observation set, evaluation seeds, building table | sections 1, 2 and 6 | `scripts/freeze_env.py` → `marl/envs/phase33_frozen.json` |
+| Outage seeding on the 92-day calendar, per building, from the reset seed | section 1 | `marl/envs/outages.py` |
+| KPIs: average daily district peak and cost, raw and relative to R0 on the same window and seed | section 6 | `marl/envs/kpis.py`, `env.kpis()` |
+| R0 (zero action) and R1 (CityLearn `BasicBatteryRBC`) | section 4 | `marl/baselines.py`, `scripts/run_baselines.py` |
+| Alignment check: R0, R1 and M0 rank the same by return and by the primary outcome on validation | section 2, gate G1 | `scripts/alignment_check.py` |
+
+**Outages.** The schema's outage model (SAIFI 1.436/yr, CAIDI 331.2 min) is
+kept, but its seed is replaced: for reset seed `s`, building `b` draws its
+signal once over steps 0–2207 with a seed derived from `(s, b)`, and each episode
+takes its window's slice. This goes through CityLearn's own hook,
+`Building.reset_power_outage_signal`, so the `power_outage` observation and
+the physics both see it. The same seed gives the same outages in every arm and
+on any window, and the six buildings fail independently.
+
+**Frozen constants** (`phase33_frozen.json`, written by `python -m scripts.freeze_env`):
+c̄_R0 = 0.2470 and h̄_R0 = 67.145 (R0 over steps 0–1487, outage seed 0), so the
+mean R0 reward on the training block is -(α + β). `VAL_SEED = 7` and
+`TEST_SEED = 0` are the smallest seeds with at least one outage hour in their
+block. The construction fails if the active observation set (30 per building,
+85 in the global state) stops matching. Battery efficiency is the schema's
+nominal 0.95/0.96; CityLearn applies it through a power-efficiency curve
+(0.88–0.96 depending on the charge rate), which the report should mention.
+
+**info per step:** `district_load` (L_t, kWh), `price`, `cost`,
+`dataset_step`, `outage` (n,), `building_net_load` (n,, kWh; for a
+full-observability arm or load messages), plus the adapter's
+`battery_energy`.
+
+## 2. Results so far
+
+| Block (seed) | Arm | Primary (peak / R0) | Cost / R0 | Return |
+|--------------|-----|---------------------|-----------|--------|
+| validation (7) | R0 | 1.000 | 1.000 | -874.8 |
+| validation (7) | R1 | 0.968 | 0.998 | -865.1 |
+| test (0) | R0 | 1.000 | 1.000 | -999.0 |
+| test (0) | R1 | 0.946 | 0.998 | -983.8 |
+
+Speed check (M1-RND, 720-step windows): about 104 steps/s including updates,
+about **0.53 h per 200k-step run** (target ≤ 2 h). The wrapper costs about 6%
+over the temporary adapter.
+
+## 2b. Changes after the proposal feedback
+
+**Reward.** The peak term is now h = max(0, L)² instead of L². The old term
+penalized midday solar export like an import peak, while the cost term and
+the primary KPI (daily import peak) ignore export. `scripts/export_check.py`:
+
+| Block (seed) | Arm | Export steps | Lowest L (kWh) | Share of old Σ L² from export |
+|--------------|-----|--------------|----------------|-------------------------------|
+| train (0) | R0 | 16 / 1487 (1.1%) | -1.32 | 0.01% |
+| train (0) | R1 | 6 / 1487 (0.4%) | -1.65 | 0.01% |
+| validation (7) | R0, R1 | 0 / 359 | 0.49, 1.15 | 0 |
+| test (0) | R0, R1 | 0 / 359 | 1.79, 3.41 | 0 |
+
+So for the references the change is nearly free: h̄_R0 moved from 67.149 to
+67.145, R0/R1 KPIs are identical, and returns moved by at most 0.03 (test R0: -998.93 → -998.95).
+It matters for learned policies, which could otherwise be pushed away from
+discharging into a midday surplus. Re-frozen before any M0 run; the
+alignment check still has to run once M0 exists. The frozen norms now carry
+`h_formula = "max(0,L)^2"`, and the env refuses norms frozen for another
+definition, so a stale `phase33_frozen.json` fails loudly instead of
+mis-scaling the reward. The KPI field is now `mean_import_sq` (mean h_t).
+
+**Report text, Section 1 (message channel).** "The messages are fixed
+peer-state sharing over a lossy channel: every agent always sends its current
+SoC to its five peers, and nothing about what to send is learned. The study
+measures the value of this fixed signal and how much of it survives message
+loss; learned communication is outside its scope."
+
+**Report text, Section 2 (reward).** "h_t = max(0, L_t)². Squaring only the
+district import keeps both terms consistent with each other and with the
+primary outcome, the average daily import peak; exported energy (L_t < 0) is
+neither costed nor penalized. Under no-battery control the district exports
+in 1.1% of training hours and never in the validation or test blocks, so the
+normalization constant h̄_R0 is practically unchanged."
+
+**For Michael (M-FULL / load messages).** `info["building_net_load"]` gives
+each building's net load in the step just taken; local observations already
+contain `net_electricity_consumption` and `non_shiftable_load`. The schema has
+no predicted-load observation, so a "predicted load" message would need a
+forecaster of our own.
+
+**For Vishal (informativeness check, after G1).**
+
+```python
+from marl.envs.features import collect, peer_soc_dataset
+obs_seq, soc_seq = collect(val_env, controller, seed=VAL_SEED)   # controller: obs_list -> actions
+data = peer_soc_dataset(obs_seq, soc_seq, val_env.observation_names)
+data[i]["X"], data[i]["Y"]       # regress peers' SoC (T, 5) on agent i's observation (T, 30)
 ```
-env.n_agents, env.obs_dims, env.action_dims, env.state_dim
-env.reset(seed=None, options=None) -> (obs_list, info)
-env.step(actions_list) -> (obs_list, reward: float, terminated, truncated, info)
-env.soc() -> (n,) true SoC        # message payload
-env.global_state() -> (state_dim,) # critic input, never contains drops
+
+Peers are in the channel's order. `drop_own_soc=True` removes the agent's own
+SoC from X. For M0, wrap the loaded policy as a raw-observation controller.
+
+## 3. Running
+
+```bash
+python -m scripts.freeze_env           # only if the reward, schema or CityLearn changes
+python -m scripts.export_check         # how often L < 0 -> results/export_check.json
+python -m scripts.run_baselines        # R0/R1 KPIs -> results/baselines.json
+python -m scripts.alignment_check --m0 runs/M0_s0.pt [--m0 runs/M0_s1.pt]
+python -m pytest tests/test_district_env.py -v
 ```
 
-* The reward is **one shared scalar** (section 2).
-* `reset(seed=s)` must fix the outage realization and the training window for
-  that seed. Reset seeds come from a stream that depends only on the run
-  seed, never on the arm, so runs are paired.
-* Report a window end as `truncated=True`. on-policy's `bad_masks` then stop
-  the cut-off step from being treated as a real terminal. CityLearn 3.0.2
-  never sets `truncated` (it reports every episode end as `terminated`), so
-  the wrapper has to convert it, as the temporary adapter does.
-* Put each battery's actual electricity use in the step just taken (kWh,
-  + charging) in `info["battery_energy"]`. Evaluation records it, and it is the
-  signal for the synchrony diagnostic. In CityLearn it is
-  `building.electrical_storage.electricity_consumption[env.time_step - 1]`.
-  Use the env clock: on the terminal step the buildings' clocks don't advance.
-* **Known issue, outages:** in the Phase 3.3 schema every building's
-  stochastic outage model has a fixed seed (57841) that `reset(seed)` doesn't
-  reach. Outages are drawn per episode from the episode start, so with this
-  seed there are none in 7-, 15- or 30-day episodes, and in a full 92-day run
-  they fall on days 43, 70 and 89 in all six buildings at once. The wrapper
-  must set the outage seed from the reset seed and place outages on the
-  92-day calendar so the test block gets some.
-* CityLearn picks random windows with `np.random.RandomState(seed * (episode +
-  1))`, which fails once that reaches 2**32. Map reset seeds into a small range
-  first (the adapter uses `1 + seed % 100000`).
-* KPIs: pass `on_episode_end=lambda env: env.kpis()` (or similar) to
-  `evaluate`, and the result lands in `record["kpis"]`.
-* Until the wrapper is done, `marl/envs/citylearn_adapter.py` gives a
-  battery-only, decentralized CityLearn 2023 Phase 3.3 env with a
-  **placeholder** reward. It follows the split: `split="train"` gives random
-  contiguous windows inside steps 0–1487; `"validation"` and `"test"` are one
-  episode over their whole block. It does **not** fix the outage seeding.
+**For Vishal:** evaluate with the frozen seeds and the KPI hook:
+
+```python
+from marl.envs.district_env import DistrictBatteryEnv, TEST_SEED
+test_env = DistrictBatteryEnv(split="test")
+recs = r.evaluate(test_env, p=0.5, n_replicates=10, env_seed=TEST_SEED,
+                  on_episode_end=lambda e: e.kpis())
+recs[0]["kpis"]["primary"]       # average daily peak / R0's (lower is better)
+```
+
+**Dataset download.** CityLearn fetches the dataset through the GitHub API,
+which is rate limited (60 requests/h without auth). If you see a 403, clone
+`citylearn-project/CityLearn` at tag `v3.0.2` and copy
+`data/datasets/citylearn_challenge_2023_phase_3_3` into
+`~/Library/Caches/citylearn/v3.0.2/datasets/` (Linux: `~/.cache/citylearn/...`).
+The wrapper passes the cached `schema.json` path, so after that it never
+contacts GitHub.
 
 # Part B: MAPPO, message channel, random-loss training
 
@@ -125,9 +220,9 @@ Each building has its own critic, and with `use_centralized_V=True` all of them 
 | Evaluation records actual battery energy, which differs from the action once a battery is full | synchrony computed from commands | `test_message_env.py` | numpy |
 | CityLearn adapter contract, split windows, truncation; one update per arm and steps/s | real-env integration, ≤ 2 h target | `test_citylearn_smoke.py` | citylearn (+ torch) |
 
-**Untested until part A and C done:** the real reward and its R0
-normalization, alignment check, split and outage seeding (Andrea); KPI
-aggregation, paired t-intervals, synchrony (Vishal).
+**Untested until part C done:** KPI aggregation, paired t-intervals,
+synchrony (Vishal). Part A's reward, R0 normalization, outage seeding and
+KPIs are covered by `test_district_env.py` and `test_citylearn_smoke.py`.
 
 ## 3. Running
 

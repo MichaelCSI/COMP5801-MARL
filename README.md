@@ -22,9 +22,10 @@ unmodified in `third_party/onpolicy/`.
 ```
 marl/
   comms/        lossy peer-SoC message channel and delivery schedules
-  envs/         env contract for the CityLearn wrapper, toy envs, temporary CityLearn adapter
+  envs/         project CityLearn env (reward, outages, KPIs, frozen constants), env contract, toy envs
+  baselines.py  R0 and R1 reference controllers
   mappo/        glue around on-policy (messages in actor inputs, map arms to on-policy...)
-scripts/        command-line entry points (training, speed check)
+scripts/        command-line entry points (training, speed check, baselines, alignment check, freeze, export check)
 tests/          unit and integration tests
 third_party/    vendored on-policy MAPPO code (MIT, pinned commit; see VENDORED.md)
 WorkPlan.md     work plan per team member
@@ -91,7 +92,7 @@ python -m scripts.train --arm M0 --seed 0 --steps 20000 --env toy   # fast check
 | `--arm` | `M0` | `M0`, `M1`, `M1-RND`, `I0`, `M1-RND-NM` |
 | `--seed` | `0` | Run seed (the same seed gives the same outages in every arm) |
 | `--steps` | `20000` | Total environment steps |
-| `--env` | `toy` | `toy` or `citylearn` (temporary adapter until the project wrapper lands) |
+| `--env` | `toy` | `toy`, `citylearn` (project env: district reward, outage seeding, KPIs) or `citylearn-temp` (old adapter) |
 | `--episode-steps` | `168` | Training episode length in hours |
 | `--rollout-steps` | `1000` | Steps collected per PPO update |
 | `--out` | `runs` | Output directory |
@@ -127,6 +128,7 @@ missing.
 | `tests/test_message_env.py` | Actor/critic inputs (critic never sees drops), raw messages, paired seeds across arms, env contract, evaluation | numpy | `python -m pytest tests/test_message_env.py -v` |
 | `tests/test_onpolicy_args.py` | Arms map to identical on-policy settings; vendored on-policy files match upstream | numpy | `python -m pytest tests/test_onpolicy_args.py -v` |
 | `tests/test_citylearn_adapter.py` | Temporary CityLearn adapter against a fake CityLearn: split windows, truncation at episode end, battery energy, seed range | numpy | `python -m pytest tests/test_citylearn_adapter.py -v` |
+| `tests/test_district_env.py` | Project env against a fake CityLearn: reward formula (exports unpenalized) and R0 normalization, outage calendar seeding, KPIs, R0/R1, per-building load in `info`, peer-SoC feature data | numpy | `python -m pytest tests/test_district_env.py -v` |
 | `tests/test_onpolicy_runner.py` | Training with on-policy MAPPO for every arm, reproducibility, checkpoints, learning-from-messages check (about a minute) | torch | `python -m pytest tests/test_onpolicy_runner.py -v -s` |
 | `tests/test_citylearn_smoke.py` | CityLearn adapter on the real 2023 Phase 3.3 dataset (split windows, truncation); one training update per arm and steps/s | citylearn, torch | `python -m pytest tests/test_citylearn_smoke.py -v -s` |
 
