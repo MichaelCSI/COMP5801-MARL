@@ -17,7 +17,7 @@ from scripts.train import make_env
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--env", choices=["toy", "citylearn"], default="citylearn")
+    parser.add_argument("--env", choices=["toy", "citylearn", "citylearn-temp"], default="citylearn")
     parser.add_argument("--steps", type=int, default=720)
     parser.add_argument(
         "--train-steps",

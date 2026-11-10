@@ -23,7 +23,11 @@ def make_env(name: str, episode_steps: int):
         from marl.envs import ToyDistrictEnv
         return ToyDistrictEnv(episode_steps=episode_steps)
     if name == "citylearn":
-        # TEMPORARY until Andrea's wrapper (reward, split, outage seeding) lands
+        # project env: shared district reward, outage seeding, KPIs (Part A)
+        from marl.envs.district_env import DistrictBatteryEnv
+        return DistrictBatteryEnv(split="train", episode_time_steps=episode_steps)
+    if name == "citylearn-temp":
+        # Michael's temporary adapter (placeholder reward, no outage seeding)
         from marl.envs.citylearn_adapter import CityLearnAdapter
         return CityLearnAdapter(episode_time_steps=episode_steps)
     raise ValueError(name)
@@ -65,7 +69,7 @@ def main():
     parser.add_argument("--arm", choices=sorted(ARMS), default="M0")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--steps", type=int, default=20_000)
-    parser.add_argument("--env", choices=["toy", "citylearn"], default="toy")
+    parser.add_argument("--env", choices=["toy", "citylearn", "citylearn-temp"], default="toy")
     parser.add_argument("--episode-steps", type=int, default=168)
     parser.add_argument("--rollout-steps", type=int, default=1000)
     parser.add_argument("--out", default="runs")

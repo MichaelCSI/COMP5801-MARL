@@ -79,5 +79,64 @@ class TestCityLearnTraining(unittest.TestCase):
             self.assertTrue(np.isfinite(history[-1]["value_loss"]))
 
 
+@unittest.skipUnless(HAS_CL, "citylearn not installed")
+class TestDistrictEnvOnCityLearn(unittest.TestCase):
+    """Part A wrapper on the real 2023 Phase 3.3 dataset."""
+
+    def test_contract_and_frozen_observations(self):
+        from marl.envs import check_env_contract
+        from marl.envs.district_env import DistrictBatteryEnv
+        for split in ("train", "validation", "test"):
+            env = DistrictBatteryEnv(split=split, episode_time_steps=48)   # checks frozen obs
+            check_env_contract(env, n_steps=10)
+
+    def test_outage_calendar_reaches_citylearn(self):
+        from marl.envs.district_env import TEST_SEED, DistrictBatteryEnv
+        env = DistrictBatteryEnv(split="test")
+        env.reset(seed=TEST_SEED)
+        start, end = env.episode_window()
+        expected = env.outage_calendar(TEST_SEED)[:, start:end + 1]
+        self.assertGreater(expected.sum(), 0, "test seed must put an outage in the test block")
+
+        outage_column = env.observation_names[0].index("power_outage")
+        seen = []
+        while True:
+            obs, _, _, truncated, _ = env.step([np.zeros(1, np.float32)] * 6)
+            seen.append([agent_obs[outage_column] for agent_obs in obs])
+            if truncated:
+                break
+        # observation after step k describes dataset step start + k + 1
+        np.testing.assert_array_equal(np.array(seen)[:-1].T, expected[:, 1:len(seen)])
+
+    def test_r0_norm_and_kpis(self):
+        from marl.baselines import BasicBatteryRBCController, ZeroController, rollout
+        from marl.envs.district_env import VAL_SEED, DistrictBatteryEnv
+        env = DistrictBatteryEnv(split="validation")
+        r0 = rollout(env, ZeroController(env), seed=VAL_SEED)["kpis"]
+        self.assertAlmostEqual(r0["primary"], 1.0)
+        self.assertEqual(r0["n_days"], 15)
+        r1 = rollout(env, BasicBatteryRBCController(env), seed=VAL_SEED)["kpis"]
+        self.assertTrue(np.isfinite(r1["primary"]))
+
+    def test_rbc_schedule_comes_from_citylearn(self):
+        from marl.baselines import _BASIC_BATTERY_RBC_SCHEDULE, BasicBatteryRBCController
+        from marl.envs.district_env import DistrictBatteryEnv
+        controller = BasicBatteryRBCController(DistrictBatteryEnv(split="test"))
+        for hour, value in _BASIC_BATTERY_RBC_SCHEDULE.items():
+            self.assertAlmostEqual(controller.schedule[hour], value)
+
+
+@unittest.skipUnless(HAS_CL and HAS_TORCH, "citylearn and torch needed")
+class TestDistrictEnvTraining(unittest.TestCase):
+    def test_one_update_with_the_project_reward(self):
+        from marl.envs.district_env import DistrictBatteryEnv
+        from marl.mappo import MAPPOConfig, OnPolicyRunner
+        env = DistrictBatteryEnv(episode_time_steps=168)
+        config = MAPPOConfig.for_arm("M1-RND", total_steps=500, rollout_steps=500,
+                                     onpolicy_overrides={"ppo_epoch": 2})
+        history = OnPolicyRunner(env, config).run()
+        self.assertTrue(np.isfinite(history[-1]["value_loss"]))
+
+
 if __name__ == "__main__":
     unittest.main()
