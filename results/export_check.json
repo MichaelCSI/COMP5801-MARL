@@ -1,0 +1,56 @@
+{
+  "train": {
+    "R0": {
+      "n_steps": 1487,
+      "export_steps": 16,
+      "export_fraction": 0.010759919300605245,
+      "min_load": -1.3165489435195923,
+      "export_share_of_old_load_sq": 5.215758989824258e-05,
+      "seed": 0
+    },
+    "R1": {
+      "n_steps": 1487,
+      "export_steps": 6,
+      "export_fraction": 0.004034969737726967,
+      "min_load": -1.6518656015396118,
+      "export_share_of_old_load_sq": 5.4790308671946634e-05,
+      "seed": 0
+    }
+  },
+  "validation": {
+    "R0": {
+      "n_steps": 359,
+      "export_steps": 0,
+      "export_fraction": 0.0,
+      "min_load": 0.4872397184371948,
+      "export_share_of_old_load_sq": 0.0,
+      "seed": 7
+    },
+    "R1": {
+      "n_steps": 359,
+      "export_steps": 0,
+      "export_fraction": 0.0,
+      "min_load": 1.147181361913681,
+      "export_share_of_old_load_sq": 0.0,
+      "seed": 7
+    }
+  },
+  "test": {
+    "R0": {
+      "n_steps": 359,
+      "export_steps": 0,
+      "export_fraction": 0.0,
+      "min_load": 1.7871108651161194,
+      "export_share_of_old_load_sq": 0.0,
+      "seed": 0
+    },
+    "R1": {
+      "n_steps": 359,
+      "export_steps": 0,
+      "export_fraction": 0.0,
+      "min_load": 3.4140106439590454,
+      "export_share_of_old_load_sq": 0.0,
+      "seed": 0
+    }
+  }
+}
