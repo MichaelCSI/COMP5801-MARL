@@ -140,11 +140,64 @@ class TestForceMask(unittest.TestCase):
         np.testing.assert_array_equal(normal[:, 0::2], forced[:, 0::2])
 
 
+class TestHoldLast(unittest.TestCase):
+    """M1-HOLD: a drop is filled with the last SoC received from that peer, mask 1."""
+
+    def test_full_delivery_is_unchanged(self):
+        soc = np.linspace(0.1, 0.6, N_AGENTS).astype(np.float32)
+        normal = PeerSoCChannel(N_AGENTS, 1.0, seed=0).transmit(soc)
+        held = PeerSoCChannel(N_AGENTS, 1.0, seed=0, hold_last=True).transmit(soc)
+        np.testing.assert_array_equal(normal, held)
+
+    def test_nothing_received_yet_is_still_zero(self):
+        messages = PeerSoCChannel(N_AGENTS, 0.0, hold_last=True).transmit(np.full(N_AGENTS, 0.7))
+        np.testing.assert_array_equal(messages, 0.0)
+
+    def test_drop_reuses_last_received_soc(self):
+        channel = PeerSoCChannel(N_AGENTS, 1.0, seed=0, hold_last=True)
+        first_soc = np.linspace(0.1, 0.6, N_AGENTS).astype(np.float32)
+        channel.transmit(first_soc)
+
+        channel.set_p(0.0)
+        messages = channel.transmit(np.full(N_AGENTS, 0.9, np.float32))
+        for receiver in range(N_AGENTS):
+            np.testing.assert_allclose(messages[receiver, 0::2],
+                                       first_soc[peer_indices(N_AGENTS, receiver)])
+            np.testing.assert_array_equal(messages[receiver, 1::2], 1.0)
+
+    def test_values_track_the_latest_delivery_per_link(self):
+        channel = PeerSoCChannel(N_AGENTS, 0.5, seed=6, hold_last=True)
+        latest = np.full((N_AGENTS, N_AGENTS), np.nan)
+        for step in range(50):
+            soc = np.full(N_AGENTS, step / 50, np.float32)
+            messages = channel.transmit(soc)
+            latest = np.where(channel.last_delivered, soc[None, :], latest)
+            for receiver in range(N_AGENTS):
+                expected = latest[receiver, peer_indices(N_AGENTS, receiver)]
+                received_any = ~np.isnan(expected)
+                np.testing.assert_allclose(messages[receiver, 0::2][received_any],
+                                           expected[received_any], rtol=1e-6)
+                np.testing.assert_array_equal(messages[receiver, 1::2], received_any)
+
+    def test_reset_forgets(self):
+        channel = PeerSoCChannel(N_AGENTS, 1.0, hold_last=True)
+        channel.transmit(np.full(N_AGENTS, 0.5))
+        channel.reset()
+        channel.set_p(0.0)
+        np.testing.assert_array_equal(channel.transmit(np.full(N_AGENTS, 0.5)), 0.0)
+
+    def test_hold_and_force_mask_are_exclusive(self):
+        with self.assertRaises(ValueError):
+            PeerSoCChannel(N_AGENTS, 0.5, force_mask=True, hold_last=True)
+
+
 class TestSchedule(unittest.TestCase):
     def test_constants_match_proposal(self):
         self.assertEqual(RND_P_CHOICES, (0.0, 0.5, 0.75, 1.0))
-        self.assertEqual(EVAL_P_LEVELS, (1.0, 0.9, 0.5, 0.0))
-        self.assertNotIn(0.9, RND_P_CHOICES)  # p=0.9 never seen in training
+        self.assertEqual(EVAL_P_LEVELS, (1.0, 0.9, 0.5, 0.25, 0.0))
+        # held out: never seen in training
+        self.assertNotIn(0.9, RND_P_CHOICES)
+        self.assertNotIn(0.25, RND_P_CHOICES)
 
     def test_fixed(self):
         schedule = DeliverySchedule("fixed", p=1.0)

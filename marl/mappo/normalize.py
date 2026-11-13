@@ -51,7 +51,8 @@ class RunningMeanStd:
 
 
 class Preprocessor:
-    """Normalizes local observations (per agent) and the critic's global state.
+    """Normalizes local observations (per agent), the critic's global state and
+    the peer net loads M-FULL actors see.
 
     Messages are NOT normalized: SoC is already in [0, 1] and the mask is
     binary, so a dropped message stays exactly [0, 0].
@@ -63,6 +64,7 @@ class Preprocessor:
         self.clip = clip
         self.local_obs_stats = [RunningMeanStd((dim,)) for dim in obs_dims]
         self.state_stats = RunningMeanStd((state_dim,))
+        self.net_load_stats = RunningMeanStd((len(obs_dims),))   # one entry per building
 
     def normalize_local_obs(self, obs, update: bool):
         """Normalize each agent's local observation; ``update`` adds it to the statistics."""
@@ -88,14 +90,27 @@ class Preprocessor:
             self.state_stats.update(state[None])
         return self.state_stats.normalize(state, self.clip)
 
+    def normalize_net_load(self, net_load, update: bool):
+        """Normalize every building's net load, each with its own statistics."""
+        net_load = np.asarray(net_load, dtype=np.float32)
+        if not self.enabled:
+            return net_load
+
+        if update:
+            self.net_load_stats.update(net_load[None])
+        return self.net_load_stats.normalize(net_load, self.clip)
+
     # "obs" / "state" keys kept so existing checkpoints still load
     def state_dict(self) -> dict:
         return {"enabled": self.enabled, "clip": self.clip,
                 "obs": [stats.state_dict() for stats in self.local_obs_stats],
-                "state": self.state_stats.state_dict()}
+                "state": self.state_stats.state_dict(),
+                "net_load": self.net_load_stats.state_dict()}
 
     def load_state_dict(self, saved: dict) -> None:
         self.enabled, self.clip = saved["enabled"], saved["clip"]
         for stats, saved_stats in zip(self.local_obs_stats, saved["obs"]):
             stats.load_state_dict(saved_stats)
         self.state_stats.load_state_dict(saved["state"])
+        if "net_load" in saved:      # absent in checkpoints from before M-FULL
+            self.net_load_stats.load_state_dict(saved["net_load"])

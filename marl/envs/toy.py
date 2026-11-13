@@ -62,7 +62,7 @@ class ToyDistrictEnv:
         # squared load under no-battery control
         self._mean_cost_no_battery, self._mean_sq_load_no_battery = self._no_battery_means()
 
-    # profiles ---------------------------------------------------------
+    ############### profiles ###############
     def _profile(self, time_step: int):
         """(hour, base load per building, solar per building, price) at a time step."""
         hour = time_step % 24
@@ -133,6 +133,9 @@ class ToyDistrictEnv:
 
     def soc(self):
         return self._soc.astype(np.float32).copy()
+
+    def net_load(self):
+        return (self._load - self._solar).astype(np.float32)
 
     def global_state(self):
         obs = self._obs()

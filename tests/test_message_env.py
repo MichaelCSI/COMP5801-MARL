@@ -6,7 +6,8 @@ import numpy as np
 from marl.comms import DeliverySchedule, PeerSoCChannel, peer_indices
 from marl.envs import EnvContractError, PeerSoCMatchEnv, ToyDistrictEnv, check_env_contract
 from marl.mappo import (MAPPOConfig, MessageEnv, Preprocessor, RandomPolicy,
-                        RunningMeanStd, build_actor_inputs, evaluate, make_message_env)
+                        RunningMeanStd, build_actor_inputs, evaluate, full_peer_block,
+                        make_message_env)
 
 N_AGENTS = 6
 TOY_OBS_DIM = 7        # ToyDistrictEnv: 4 local + 3 shared features
@@ -62,6 +63,19 @@ class TestNormalizers(unittest.TestCase):
         np.testing.assert_array_equal(original.normalize_local_obs(obs, False)[1],
                                       restored.normalize_local_obs(obs, False)[1])
 
+    def test_net_load_stats_roundtrip_and_old_checkpoints(self):
+        original = Preprocessor([2, 2], 3)
+        original.normalize_net_load([1.0, 3.0], update=True)
+        original.normalize_net_load([2.0, 5.0], update=True)
+        restored = Preprocessor([2, 2], 3)
+        restored.load_state_dict(original.state_dict())
+        np.testing.assert_array_equal(original.normalize_net_load([1.5, 4.0], False),
+                                      restored.normalize_net_load([1.5, 4.0], False))
+
+        saved_before_m_full = original.state_dict()
+        del saved_before_m_full["net_load"]
+        Preprocessor([2, 2], 3).load_state_dict(saved_before_m_full)
+
 
 class BrokenEnv(ToyDistrictEnv):
     """Returns one reward per building, which the contract forbids."""
@@ -85,7 +99,7 @@ class TestMessageEnvSpaces(unittest.TestCase):
     def test_spaces_per_arm(self):
         env = ToyDistrictEnv()
         for arm, message_len in (("M0", 0), ("M1", MESSAGE_LEN), ("M1-RND", MESSAGE_LEN),
-                                 ("I0", 0)):
+                                 ("I0", 0), ("M-FULL", MESSAGE_LEN)):
             message_env = make_message_env(env, MAPPOConfig.for_arm(arm))
             self.assertEqual(message_env.actor_dims, [TOY_OBS_DIM + message_len] * N_AGENTS, arm)
 
@@ -101,6 +115,10 @@ class TestMessageEnvSpaces(unittest.TestCase):
     def test_needs_channel_for_messages(self):
         with self.assertRaises(ValueError):
             MessageEnv(ToyDistrictEnv(), True)
+
+    def test_full_peer_info_needs_net_load(self):
+        with self.assertRaises(ValueError):
+            make_message_env(PeerSoCMatchEnv(), MAPPOConfig.for_arm("M-FULL"))
 
 
 class TestMessageEnvInputs(unittest.TestCase):
@@ -159,6 +177,52 @@ class TestMessageEnvInputs(unittest.TestCase):
         self.assertTrue(all(records[step]["time_limit"] for step in done_at))
         self.assertEqual(records[9]["info"]["episode"]["length"], 10)
         self.assertEqual(len(message_env.reset_seeds), 4)
+
+
+class TestFullPeerInfo(unittest.TestCase):
+    """M-FULL: every peer's true [SoC, net load], never dropped."""
+
+    def test_full_peer_block_layout(self):
+        soc = np.array([0.1, 0.2, 0.3])
+        net_load = np.array([5.0, 6.0, 7.0])
+        block = full_peer_block(soc, net_load)
+        np.testing.assert_allclose(block[0], [0.2, 6.0, 0.3, 7.0])
+        np.testing.assert_allclose(block[2], [0.1, 5.0, 0.2, 6.0])
+
+    def test_actors_see_every_peers_true_soc_and_load(self):
+        env = ToyDistrictEnv()
+        message_env = MessageEnv(env, False, preprocessor=Preprocessor(env.obs_dims, env.state_dim,
+                                                                       enabled=False),
+                                 env_seed=0, full_peer_info=True)
+        loads = []
+        original_net_load = env.net_load
+
+        def recording_net_load():
+            loads.append(original_net_load())
+            return loads[-1]
+
+        env.net_load = recording_net_load
+        for record, net_load in zip(drive(message_env, 60), loads):
+            for agent in range(N_AGENTS):
+                peers = peer_indices(N_AGENTS, agent)
+                peer_block = record["actor_inputs"][agent][-MESSAGE_LEN:]
+                np.testing.assert_allclose(peer_block[0::2], record["soc"][peers], rtol=1e-6)
+                np.testing.assert_allclose(peer_block[1::2], net_load[peers], rtol=1e-6)
+
+    def test_peer_loads_are_normalized_and_critic_matches_m0(self):
+        m_full = make_message_env(ToyDistrictEnv(), MAPPOConfig.for_arm("M-FULL", seed=4))
+        m0 = make_message_env(ToyDistrictEnv(), MAPPOConfig.for_arm("M0", seed=4))
+        full_records, m0_records = drive(m_full, 2000), drive(m0, 2000)
+
+        peer_loads = np.stack([record["actor_inputs"][0][-MESSAGE_LEN:][1::2]
+                               for record in full_records[500:]])
+        self.assertLess(np.abs(peer_loads.mean(0)).max(), 0.5)
+        self.assertLess(np.abs(peer_loads.std(0) - 1).max(), 0.5)
+
+        for full, plain in zip(full_records, m0_records):
+            np.testing.assert_array_equal(full["critic_inputs"][0], plain["critic_inputs"][0])
+            np.testing.assert_array_equal(full["actor_inputs"][0][:-MESSAGE_LEN],
+                                          plain["actor_inputs"][0])
 
 
 class TestPairingAndSchedule(unittest.TestCase):
@@ -286,6 +350,35 @@ class TestEvaluate(unittest.TestCase):
                                False, n_replicates=1)[0]
         self.assertIsNone(no_messages["delivered"])
 
+    def test_hold_last_fills_drops_after_the_first_delivery(self):
+        class Spy(RandomPolicy):
+            def act(self, actor_inputs, deterministic=False):
+                masks.append(np.stack([agent_input[-MESSAGE_LEN:][1::2]
+                                       for agent_input in actor_inputs]))
+                return super().act(actor_inputs, deterministic)
+
+        env = ToyDistrictEnv(episode_steps=48)
+        preprocessor = Preprocessor(env.obs_dims, env.state_dim)
+        for hold_last in (False, True):
+            masks = []
+            record = evaluate(env, Spy(N_AGENTS, [1] * N_AGENTS, seed=0), preprocessor, True,
+                              p=0.5, n_replicates=1, hold_last=hold_last)[0]
+            self.assertEqual(record["hold_last"], hold_last)
+            dropped_late = np.sum(np.stack(masks[20:]) == 0)
+            if hold_last:
+                self.assertEqual(dropped_late, 0)   # every link has delivered by then
+            else:
+                self.assertGreater(dropped_late, 0)
+
+    def test_full_peer_info_evaluation(self):
+        env = ToyDistrictEnv(episode_steps=24)
+        record = evaluate(env, RandomPolicy(N_AGENTS, [1] * N_AGENTS),
+                          Preprocessor(env.obs_dims, env.state_dim), False, n_replicates=1,
+                          full_peer_info=True)[0]
+        self.assertIsNone(record["delivered"])
+        self.assertIsNone(record["p"])
+        self.assertEqual(record["actions"].shape, (24, N_AGENTS))
+
     def test_battery_energy_recorded_and_differs_from_actions(self):
         """Synchrony needs what the batteries did, not what was commanded."""
         class AlwaysCharge:
@@ -312,6 +405,39 @@ class TestEvaluate(unittest.TestCase):
         inputs = build_actor_inputs([np.ones(2), np.zeros(2)], messages)
         np.testing.assert_array_equal(inputs[0], [1, 1, 5, 1])
         np.testing.assert_array_equal(build_actor_inputs([np.ones(2)], None)[0], [1, 1])
+
+
+
+class TestOnProjectEnv(unittest.TestCase):
+    """Every arm's inputs and the evaluation conditions on Andrea's DistrictBatteryEnv."""
+
+    def test_training_inputs_for_every_arm(self):
+        from marl.mappo import ARMS
+        from tests.test_district_env import fake_district_modules, make
+
+        with fake_district_modules():
+            for arm in ARMS:
+                env = make(split="train", episode_time_steps=48)
+                message_env = make_message_env(env, MAPPOConfig.for_arm(arm, seed=1))
+                for record in drive(message_env, 100):
+                    for agent_input, dim in zip(record["actor_inputs"], message_env.actor_dims):
+                        self.assertEqual(agent_input.shape, (dim,))
+                        self.assertTrue(np.all(np.isfinite(agent_input)), arm)
+                self.assertGreaterEqual(len(message_env.episodes), 2, arm)
+
+    def test_evaluation_conditions_with_kpis(self):
+        from marl.mappo import evaluation_conditions
+        from tests.test_district_env import fake_district_modules, make
+
+        with fake_district_modules():
+            env = make(split="test")
+            preprocessor = Preprocessor(env.obs_dims, env.state_dim)
+            for label, kwargs in evaluation_conditions("M1"):
+                record = evaluate(env, RandomPolicy(N_AGENTS, [1] * N_AGENTS, seed=0),
+                                  preprocessor, True, n_replicates=1, env_seed=0,
+                                  on_episode_end=lambda e: e.kpis(), **kwargs)[0]
+                self.assertIn("primary", record["kpis"], label)
+                self.assertEqual(record["battery_energy"].shape[1], N_AGENTS)
 
 
 if __name__ == "__main__":

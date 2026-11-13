@@ -29,8 +29,13 @@ def evaluate(
     critic: str = "central",
     on_episode_end: Optional[Callable] = None,
     max_steps: Optional[int] = None,
+    hold_last: bool = False,
+    full_peer_info: bool = False,
 ) -> list:
     """Run ``n_replicates`` episodes at delivery probability ``p``.
+
+    ``force_mask`` is the mask check and ``hold_last`` the M1-HOLD evaluation
+    (see ``PeerSoCChannel``); ``full_peer_info`` is for M-FULL policies.
 
     Every replicate resets the env with the SAME ``env_seed`` (identical
     outages and window) and uses an independent channel stream
@@ -45,7 +50,7 @@ def evaluate(
                               use this for the synchrony diagnostic. None if the
                               env does not report it
         soc       (T, n)      true SoC each agent acted in
-        delivered (T, n, n)   delivery matrix, [i, j] = j -> i  (None for M0)
+        delivered (T, n, n)   delivery matrix, [i, j] = j -> i  (None without messages)
         rewards   (T,)
         infos     list of step info dicts
         return    float
@@ -59,13 +64,14 @@ def evaluate(
         if use_messages:
             channel = PeerSoCChannel(n_agents, p,
                                      seed=np.random.SeedSequence([channel_seed, replicate]),
-                                     force_mask=force_mask)
+                                     force_mask=force_mask, hold_last=hold_last)
             schedule = DeliverySchedule("fixed", p=p)
-        menv = MessageEnv(env, use_messages, channel, schedule, preprocessor, critic,
-                          update_normalizers=False, auto_reset=False)
+        message_env = MessageEnv(env, use_messages, channel, schedule, preprocessor, critic,
+                          update_normalizers=False, auto_reset=False,
+                          full_peer_info=full_peer_info)
 
         # same env seed every replicate -> identical outages and window
-        actor_inputs, _ = menv.reset(seed=env_seed)
+        actor_inputs, _ = message_env.reset(seed=env_seed)
 
         actions_log, soc_log, delivered_log = [], [], []
         rewards_log, infos_log, energy_log = [], [], []
@@ -75,10 +81,10 @@ def evaluate(
             actions = np.clip(np.asarray(actions, dtype=np.float32).reshape(n_agents, -1),
                               -1.0, 1.0)
             # record the state the agents acted in, before stepping
-            soc_log.append(menv.last_soc.copy())
-            delivered_log.append(menv.last_delivered.copy() if use_messages else None)
+            soc_log.append(message_env.last_soc.copy())
+            delivered_log.append(message_env.last_delivered.copy() if use_messages else None)
 
-            actor_inputs, _, rewards, done, _, info = menv.step(actions)
+            actor_inputs, _, rewards, done, _, info = message_env.step(actions)
             actions_log.append(actions[:, 0])
             rewards_log.append(float(rewards[0, 0]))   # shared, so agent 0's copy
             infos_log.append(info)
@@ -92,6 +98,7 @@ def evaluate(
         records.append({
             "p": p if use_messages else None,
             "force_mask": force_mask,
+            "hold_last": hold_last,
             "replicate": replicate,
             "actions": np.stack(actions_log),
             "battery_energy": (np.stack([np.asarray(e, np.float32) for e in energy_log])

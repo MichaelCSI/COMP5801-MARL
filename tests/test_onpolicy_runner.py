@@ -50,6 +50,10 @@ class TestStructure(unittest.TestCase):
         ippo = OnPolicyRunner(env, MAPPOConfig.for_arm("I0", **FAST))
         self.assertEqual(ippo.buffers[0].share_obs.shape[-1], 7)   # IPPO: local critic
 
+        m_full = OnPolicyRunner(env, MAPPOConfig.for_arm("M-FULL", **FAST))
+        self.assertEqual(m_full.buffers[0].obs.shape[-1], 17)      # 7 obs + 5 peers x [SoC, load]
+        self.assertEqual(m_full.buffers[0].share_obs.shape[-1], env.state_dim)
+
 
 @unittest.skipUnless(HAS_TORCH, "torch not installed")
 class TestTraining(unittest.TestCase):
@@ -139,6 +143,32 @@ class TestTraining(unittest.TestCase):
         records = runner.evaluate(ToyDistrictEnv(episode_steps=24), p=0.0, n_replicates=1,
                                   force_mask=True)
         self.assertTrue(records[0]["force_mask"])
+
+    def test_every_evaluation_condition_runs(self):
+        from marl.mappo import evaluation_conditions
+        for arm in ("M0", "M1", "M1-RND", "M-FULL"):
+            runner = OnPolicyRunner(ToyDistrictEnv(), MAPPOConfig.for_arm(arm, **FAST))
+            for label, kwargs in evaluation_conditions(arm):
+                record = runner.evaluate(ToyDistrictEnv(episode_steps=24), n_replicates=1,
+                                         **kwargs)[0]
+                self.assertEqual(record["actions"].shape, (24, N_AGENTS), label)
+                self.assertEqual(record["hold_last"], kwargs.get("hold_last", False), label)
+
+    def test_as_controller_drives_the_raw_env(self):
+        runner = OnPolicyRunner(ToyDistrictEnv(), MAPPOConfig.for_arm("M0", **FAST))
+        runner.run()
+        controller = runner.as_controller()
+
+        env = ToyDistrictEnv(episode_steps=24)
+        obs, _ = env.reset(seed=1)
+        expected = runner.evaluate(ToyDistrictEnv(episode_steps=24), n_replicates=1,
+                                   env_seed=1)[0]["actions"][0]
+        actions = controller(obs)
+        self.assertEqual(len(actions), N_AGENTS)
+        np.testing.assert_allclose([action[0] for action in actions], expected, rtol=1e-5)
+
+        with self.assertRaises(ValueError):
+            OnPolicyRunner(ToyDistrictEnv(), MAPPOConfig.for_arm("M1", **FAST)).as_controller()
 
     def test_deterministic_eval_is_repeatable(self):
         runner = OnPolicyRunner(ToyDistrictEnv(), MAPPOConfig.for_arm("M1", **FAST))

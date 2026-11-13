@@ -24,7 +24,8 @@ from marl.envs import check_env_contract
 from marl.envs.citylearn_adapter import (SPLITS, CityLearnAdapter, citylearn_seed,
                                          split_kwargs)
 
-OBS_NAMES = ["hour", "electricity_pricing", "electrical_storage_soc", "non_shiftable_load"]
+OBS_NAMES = ["hour", "electricity_pricing", "electrical_storage_soc", "non_shiftable_load",
+             "net_electricity_consumption"]
 SHARED_OBS_NAMES = ["hour", "electricity_pricing"]
 POWER_KW = [3.32, 3.32, 1.61, 1.61, 3.32, 1.61]
 N_BUILDINGS = 6
@@ -83,7 +84,8 @@ class FakeCityLearnEnv:
 
     def _obs(self):
         dataset_step = self.episode_tracker.episode_start_time_step + self.time_step
-        return [[dataset_step % 24, 0.2, 0.5, 1.0 + building] for building in range(N_BUILDINGS)]
+        return [[dataset_step % 24, 0.2, 0.5, 1.0 + building, 0.8 + 0.1 * building]
+                for building in range(N_BUILDINGS)]
 
     def reset(self, seed=None, options=None):
         if seed is not None:
@@ -180,7 +182,13 @@ class TestAdapterWithFakeCityLearn(unittest.TestCase):
         env = self.make(episode_time_steps=24)
         check_env_contract(env, n_steps=30)
         self.assertEqual(env.env.kwargs["active_actions"], ["electrical_storage"])
-        self.assertEqual(env.state_dim, 2 + N_BUILDINGS * 2)   # 2 shared + 2 local each
+        self.assertEqual(env.state_dim, 2 + N_BUILDINGS * 3)   # 2 shared + 3 local each
+
+    def test_net_load_reads_each_buildings_own_observation(self):
+        env = self.make(episode_time_steps=24)
+        obs, _ = env.reset(seed=0)
+        position = OBS_NAMES.index("net_electricity_consumption")
+        np.testing.assert_allclose(env.net_load(), [agent_obs[position] for agent_obs in obs])
 
     def test_training_windows_random_inside_train_block(self):
         env = self.make(episode_time_steps=168)

@@ -140,7 +140,7 @@ contacts GitHub.
 
 # Part B: MAPPO, message channel, random-loss training
 
-MAPPO training code, message channel and mask, random-loss training (M1-RND), optional IPPO (I0). Report: method and baselines.
+MAPPO training code, message channel and mask, random-loss training (M1-RND), IPPO (I0), M-FULL and M1-HOLD. Report: method and baselines.
 
 ## 1. What we reuse and what we wrote
 
@@ -172,10 +172,12 @@ protocol (`evaluate.py`). Nothing can train without it.
 | Peer-SoC channel: 30 directed links, independent Bernoulli(p) per link per step, `[SoC, 1]` / `[0, 0]`, own RNG | section 1 | `marl/comms/channel.py` |
 | Delivery schedule: fixed p (M1) or p ~ U{0, .5, .75, 1} per episode (M1-RND) | section 5 | `DeliverySchedule` |
 | Mask check: evaluate with mask forced to 1 | section 6 | `PeerSoCChannel(force_mask=True)` |
+| M1-HOLD: a drop is filled with the last SoC that receiver got from that peer, mask 1 (`[0, 0]` until something arrives) | feedback | `PeerSoCChannel(hold_last=True)` |
 | `MessageEnv`: actor input õᵢ = [norm(oᵢ), m₋ᵢ], critic input = true global state, paired reset seeds, per-episode p | section 1, section 5 | `marl/mappo/message_env.py` |
-| Arms M0 / M1 / M1-RND (+ I0, M1-RND-NM) → on-policy arguments | section 4–6 | `marl/mappo/config.py` |
+| M-FULL: the message slots hold every peer's true [SoC, normalized net load], never dropped | feedback | `full_peer_block`, `env.net_load()` |
+| Core arms M0 / M1 / M1-RND / I0 / M-FULL (+ optional M1-RND-NM) → on-policy arguments | section 4–6 | `marl/mappo/config.py` |
 | Training loop on on-policy's separated runner (no wandb/tensorboardX), `bad_masks` for window truncation, checkpoints | section 5 | `marl/mappo/runner.py` |
-| Evaluation at p ∈ {1, .9, .5, 0}, 10 replicates, identical outages, independent drops | section 6 | `marl/mappo/evaluate.py` |
+| Evaluation at p ∈ {1, .9, .5, .25, 0}, 10 replicates, identical outages, independent drops; `evaluation_conditions(arm)` lists every run an arm needs | section 6 | `marl/mappo/evaluate.py`, `config.py` |
 | Env contract for Andrea's wrapper, toy envs, temporary CityLearn adapter | — | `marl/envs/` |
 | CLI + speed check | section 5 checkpoint 1 | `scripts/train.py`, `scripts/speed_check.py` |
 
@@ -197,6 +199,29 @@ with the same budget for every arm.
 
 Each building has its own critic, and with `use_centralized_V=True` all of them see the same true global state and the same shared reward. So they estimate the same V(s) with independent parameters. This is on-policy's standard non-shared MAPPO.
 
+## 1b. Changes after the proposal feedback
+
+* **Held-out level:** M1-RND keeps the pre-registered
+  training set {0, 0.5, 0.75, 1}; the sweep adds 25%:
+  `EVAL_P_LEVELS = (1, 0.9, 0.5, 0.25, 0)`. 25% lies between two training
+  values, so the report should call it unseen in training, not an
+  extrapolation.
+* **New core arms:**
+  * **I0** was already implemented; it is now core.
+  * **M-FULL** trains with the 10 message slots filled by every peer's true
+    SoC and net load (`net_electricity_consumption` as each peer's own
+    observation shows it, normalized per building), never dropped. Same input
+    size as M1, so the two differ only in what the slots carry. Envs provide
+    it through the optional contract method `env.net_load()`; the adapter, and
+    so `DistrictBatteryEnv`, reads it from the observation.
+  * **M1-HOLD** is evaluation only: `runner_M1.evaluate(..., hold_last=True)`.
+    It needs no training and is part of `evaluation_conditions("M1")`.
+  * **I1** (IPPO with messages) is not an arm yet. If I0 clearly beats M0, it
+    is a one-line addition to `ARMS`.
+* **Informativeness check:** `runner.as_controller()` turns
+  a trained M0 into the `obs_list -> actions` controller that
+  `marl.envs.features.collect` needs.
+
 ## 2. Tests
 
 | Test | Guards against | File | Needs |
@@ -207,6 +232,10 @@ Each building has its own critic, and with `use_centralized_V=True` all of them 
 | Messages are raw SoC of the current step; local features normalized | stale or scaled messages | `test_message_env.py` | numpy |
 | Shared reward replicated to every agent; auto-reset + truncation flags | wrong rewards / masks into on-policy | `test_message_env.py` | numpy |
 | **Reset seeds identical across M0/M1/M1-RND/I0** | unpaired runs | `test_message_env.py` | numpy |
+| M1-HOLD fills each drop with that link's last delivered SoC, mask 1; `[0, 0]` until the first delivery; reset per episode | wrong M1-HOLD evaluation | `test_channel.py`, `test_message_env.py` | numpy |
+| M-FULL slots hold every peer's true SoC and net load, loads normalized, critic input and own features identical to M0 | M-FULL not an upper bound of the messages | `test_message_env.py` | numpy |
+| `evaluation_conditions`: arms without messages once; message arms at all 5 levels; M1-HOLD only for M1 and the mask check only for M1-RND, both at p < 1 | missing or misassigned runs in the sweep | `test_onpolicy_args.py` | numpy |
+| Every arm's inputs and M1's evaluation conditions (with KPIs) on `DistrictBatteryEnv` | Part A/B integration | `test_message_env.py` | numpy |
 | M1-RND draws p per episode, realized rate tracks it; no-mask arm holds mask at 1 | random-loss training | `test_message_env.py` | numpy |
 | Oracle on a messages-only task scores ≈ −(1−p)/3; replicates share outages, not drops; eval freezes normalizers | end-to-end message path, Vishal's sweep | `test_message_env.py` | numpy |
 | Env contract passes on toy envs, rejects per-building reward | Andrea's wrapper breaking the trainer | `test_message_env.py` | numpy |
@@ -259,12 +288,19 @@ No new dependencies: the vendored on-policy code needs only torch and numpy.
 @Vishal the runner can call the part B code with:
 
 ```python
-from marl.mappo import MAPPOConfig, OnPolicyRunner
+from marl.envs.district_env import DistrictBatteryEnv, TEST_SEED
+from marl.mappo import CORE_ARMS, MAPPOConfig, OnPolicyRunner, evaluation_conditions
+
 r = OnPolicyRunner(env, MAPPOConfig.for_arm("M1-RND", seed=s, total_steps=N), logger=fn)
 r.run(); r.save(path)                          # or scripts.train.run(arm, seed, ...)
+
+test_env = DistrictBatteryEnv(split="test")
 r = OnPolicyRunner.load(path, test_env)
-recs = r.evaluate(test_env, p=0.5, n_replicates=10, env_seed=TEST_SEED)
-recs = r.evaluate(test_env, p=0.0, force_mask=True)    # mask check
+for label, kwargs in evaluation_conditions(r.config.arm):   # sweep, M1-HOLD, mask check
+    recs = r.evaluate(test_env, n_replicates=10, env_seed=TEST_SEED,
+                      on_episode_end=lambda e: e.kpis(), **kwargs)
+
+controller = r.as_controller()     # M0 only: for marl.envs.features.collect
 ```
 
 Each record has `actions (T, n)` (commanded actions), `battery_energy (T, n)`

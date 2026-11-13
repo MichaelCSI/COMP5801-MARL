@@ -58,13 +58,19 @@ class TestCityLearnAdapter(unittest.TestCase):
     def test_global_state_has_no_duplicate_shared_columns(self):
         self.assertLess(self.env.state_dim, sum(self.env.obs_dims))
 
+    def test_net_load_for_m_full(self):
+        self.env.reset(seed=0)
+        net_load = self.env.net_load()
+        self.assertEqual(net_load.shape, (6,))
+        self.assertTrue(np.all(np.isfinite(net_load)))
+
 
 @unittest.skipUnless(HAS_CL and HAS_TORCH, "citylearn and torch needed")
 class TestCityLearnTraining(unittest.TestCase):
     def test_one_update_per_arm_and_speed(self):
         from marl.envs.citylearn_adapter import CityLearnAdapter
         from marl.mappo import MAPPOConfig, OnPolicyRunner
-        for arm in ("M0", "M1", "M1-RND"):
+        for arm in ("M0", "M1", "M1-RND", "M-FULL"):
             env = CityLearnAdapter(episode_time_steps=168)
             config = MAPPOConfig.for_arm(arm, total_steps=500, rollout_steps=500,
                                          onpolicy_overrides={"ppo_epoch": 2})

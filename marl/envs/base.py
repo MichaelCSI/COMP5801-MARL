@@ -27,6 +27,10 @@ Episode ends: a training window running out is a time limit, so report it as
 ``truncated=True`` (``terminated`` only for a true terminal state, which this
 task does not have). The trainer then treats it as a cut-off, not an ending.
 
+Optional ``env.net_load() -> np.ndarray (n,)``: each building's net
+electricity consumption as it appears in its own current observation. Only
+the M-FULL arm needs it (every actor sees its peers' SoC and net load).
+
 Optional ``info["battery_energy"]``: (n,) array, each battery's actual
 electricity use at the meter in the step just taken (kWh, + charging). It is
 recorded by evaluation and is the signal for the synchrony diagnostic.
@@ -105,6 +109,12 @@ def check_env_contract(env, n_steps: int = 5, seed: int = 0) -> None:
         _require(state.shape == (env.state_dim,),
                  f"{where}: global_state() shape {state.shape}, state_dim says {env.state_dim}")
         _require(np.all(np.isfinite(state)), f"{where}: global_state() has non-finite values")
+
+        if hasattr(env, "net_load"):
+            net_load = np.asarray(env.net_load(), dtype=np.float64)
+            _require(net_load.shape == (n_agents,),
+                     f"{where}: net_load() must have shape ({n_agents},), got {net_load.shape}")
+            _require(np.all(np.isfinite(net_load)), f"{where}: net_load() has non-finite values")
 
     check_obs(obs, "reset")
     check_soc_and_state("reset")

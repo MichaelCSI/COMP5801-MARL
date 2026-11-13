@@ -6,9 +6,10 @@ normalizers) import without torch; ``OnPolicyRunner`` needs torch.
 """
 import importlib.util as _ilu
 
-from .config import ARMS, FIXED_ONPOLICY_ARGS, MAPPOConfig
+from .config import (ARMS, CORE_ARMS, FIXED_ONPOLICY_ARGS, OPTIONAL_ARMS, MAPPOConfig,
+                     evaluation_conditions)
 from .evaluate import RandomPolicy, evaluate
-from .message_env import MessageEnv, build_actor_inputs, make_message_env
+from .message_env import MessageEnv, build_actor_inputs, full_peer_block, make_message_env
 from .normalize import Preprocessor, RunningMeanStd
 
 if _ilu.find_spec("torch") is not None:
@@ -17,7 +18,7 @@ else:  # pragma: no cover - torch is optional at import time
     OnPolicyRunner = None
 
 __all__ = [
-    "ARMS", "FIXED_ONPOLICY_ARGS", "MAPPOConfig", "MessageEnv", "OnPolicyRunner",
-    "Preprocessor", "RandomPolicy", "RunningMeanStd", "build_actor_inputs", "evaluate",
-    "make_message_env",
+    "ARMS", "CORE_ARMS", "FIXED_ONPOLICY_ARGS", "MAPPOConfig", "MessageEnv", "OPTIONAL_ARMS",
+    "OnPolicyRunner", "Preprocessor", "RandomPolicy", "RunningMeanStd", "build_actor_inputs",
+    "evaluate", "evaluation_conditions", "full_peer_block", "make_message_env",
 ]

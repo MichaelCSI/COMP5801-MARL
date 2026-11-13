@@ -18,6 +18,10 @@ realizations.
 ``force_mask=True`` is the mask check from Section 6: the mask is always 1,
 so a dropped message looks like a real SoC of 0.
 
+``hold_last=True`` is the M1-HOLD evaluation (proposal feedback): a dropped
+message is replaced by the last SoC that receiver got from that peer, with
+mask 1. Before anything has arrived from a peer it is still [0, 0].
+
 ``p`` is the delivery probability, named as in the proposal.
 """
 from __future__ import annotations
@@ -27,11 +31,12 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-#: Training delivery levels for M1-RND (proposal Section 5).
+# Training delivery levels for M1-RND (proposal Section 5).
 RND_P_CHOICES: tuple = (0.0, 0.5, 0.75, 1.0)
 
-#: Evaluation delivery levels (proposal Section 6, experiment matrix).
-EVAL_P_LEVELS: tuple = (1.0, 0.9, 0.5, 0.0)
+# Evaluation delivery levels (proposal Section 6, plus 0.25 after the feedback:
+# a level M1-RND never trains on, away from its training values).
+EVAL_P_LEVELS: tuple = (1.0, 0.9, 0.5, 0.25, 0.0)
 
 
 def peer_indices(n_agents: int, receiver: int) -> list:
@@ -53,12 +58,16 @@ class PeerSoCChannel:
         p: float = 1.0,
         seed: Optional[int | np.random.SeedSequence] = None,
         force_mask: bool = False,
+        hold_last: bool = False,
     ) -> None:
         if n_agents < 2:
             raise ValueError("a message channel needs at least two agents")
+        if force_mask and hold_last:
+            raise ValueError("force_mask and hold_last are separate evaluations")
 
         self.n_agents = int(n_agents)
         self.force_mask = bool(force_mask)
+        self.hold_last = bool(hold_last)
         self.rng = np.random.default_rng(seed)
         self.set_p(p)
 
@@ -68,6 +77,12 @@ class PeerSoCChannel:
             dtype=int,
         )
         self.last_delivered: Optional[np.ndarray] = None
+        self.reset()
+
+    def reset(self) -> None:
+        """Forget what each receiver last got (call at every episode start)."""
+        # [i, j] = last SoC receiver i got from peer j; NaN = nothing yet
+        self._last_received = np.full((self.n_agents, self.n_agents), np.nan, dtype=np.float32)
 
     @property
     def dim(self) -> int:
@@ -102,7 +117,23 @@ class PeerSoCChannel:
 
         delivered = self.sample_delivery()
         self.last_delivered = delivered
-        return self.encode(soc, delivered)
+        messages = self.encode(soc, delivered)
+
+        if self.hold_last:
+            messages = self._fill_drops_with_last_received(soc, delivered, messages)
+        return messages
+
+    def _fill_drops_with_last_received(self, soc, delivered, messages):
+        self._last_received = np.where(delivered, soc[None, :], self._last_received)
+
+        receiver_rows = np.arange(self.n_agents)[:, None]
+        arrived = delivered[receiver_rows, self._peer_table]
+        held = self._last_received[receiver_rows, self._peer_table]
+        use_held = ~arrived & ~np.isnan(held)
+
+        messages[:, 0::2] = np.where(use_held, held, messages[:, 0::2])
+        messages[:, 1::2] = np.where(use_held, 1.0, messages[:, 1::2])
+        return messages
 
     def encode(self, soc: np.ndarray, delivered: np.ndarray) -> np.ndarray:
         """Turn true SoCs and a delivery matrix into each receiver's message block."""

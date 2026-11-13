@@ -120,7 +120,7 @@ class OnPolicyRunner:
         self.updates = 0
         self.history: list = []
 
-    # -- on-policy separated-runner steps -------------------------------------
+    ################ on-policy separated-runner steps ###############
     def warmup(self) -> None:
         """Put the first episode's inputs in slot 0 of every buffer."""
         actor_inputs, critic_inputs = self.message_env.reset()
@@ -183,7 +183,7 @@ class OnPolicyRunner:
             buffer.after_update()
         return per_agent_stats
 
-    # -- main loop ------------------------------------------------------------
+    ################ main loop ###############
     def run(self, total_steps: Optional[int] = None) -> list:
         rollout_length = int(self.args.episode_length)   # on-policy's name for it
         total = int(total_steps or self.args.num_env_steps)
@@ -230,22 +230,50 @@ class OnPolicyRunner:
                 self.logger(stats)
         return self.history
 
-    # -- evaluation -----------------------------------------------------------
+    ############### evaluation ###############
     def actors(self) -> DecentralizedActors:
         return DecentralizedActors(self.policies, self.args, self.device)
 
     def evaluate(self, env=None, p: float = 1.0, n_replicates: int = 10, env_seed: int = 0,
                  channel_seed: Optional[int] = None, force_mask: bool = False,
-                 deterministic: bool = True, on_episode_end=None, max_steps=None) -> list:
-        """Frozen-policy evaluation at delivery level ``p`` (see marl.mappo.evaluate)."""
+                 hold_last: bool = False, deterministic: bool = True, on_episode_end=None,
+                 max_steps=None) -> list:
+        """Frozen-policy evaluation at delivery level ``p`` (see marl.mappo.evaluate).
+
+        ``marl.mappo.evaluation_conditions(arm)`` lists the keyword sets each arm
+        is evaluated with: ``runner.evaluate(test_env, **kwargs, ...)``.
+        """
         if channel_seed is None:
             channel_seed = int(stream(self.config.seed, STREAM_EVAL).generate_state(1)[0])
-        return _evaluate(env or self.env, self.actors(), self.message_env.preprocessor,
-                         self.config.use_messages, p, n_replicates, env_seed, channel_seed,
-                         force_mask, deterministic, self.config.critic, on_episode_end,
-                         max_steps)
+        return _evaluate(
+            env or self.env, self.actors(), self.message_env.preprocessor,
+            use_messages=self.config.use_messages, p=p, n_replicates=n_replicates,
+            env_seed=env_seed, channel_seed=channel_seed, force_mask=force_mask,
+            deterministic=deterministic, critic=self.config.critic,
+            on_episode_end=on_episode_end, max_steps=max_steps, hold_last=hold_last,
+            full_peer_info=self.config.full_peer_info,
+        )
 
-    # -- checkpoints ----------------------------------------------------------
+    def as_controller(self):
+        """The trained actors as ``obs_list -> actions_list`` on raw observations.
+
+        For tools that drive the env directly, such as ``marl.envs.features.collect``
+        (the peer-SoC informativeness check). Only for arms whose actors see
+        nothing but their own observation (M0, I0).
+        """
+        if self.config.use_messages or self.config.full_peer_info:
+            raise ValueError(f"{self.config.arm} actors need peer inputs, not just observations")
+
+        actors, preprocessor = self.actors(), self.message_env.preprocessor
+
+        def controller(obs_list):
+            local_obs = preprocessor.normalize_local_obs(obs_list, update=False)
+            actions, _ = actors.act(local_obs, deterministic=True)
+            return [np.clip(action, -1.0, 1.0) for action in actions]
+
+        return controller
+
+    ################ checkpoints ###############
     VALUENORM_TENSORS = ("running_mean", "running_mean_sq", "debiasing_term")
 
     def _valuenorm_state(self, trainer):

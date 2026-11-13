@@ -11,7 +11,13 @@ training under random loss (M1-RND) makes the policies robust.
 | M0 | MAPPO, no messages (primary baseline) |
 | M1 | MAPPO with peer SoC + availability mask, 100% delivery in training |
 | M1-RND | Same inputs, delivery probability drawn per episode from {0, 0.5, 0.75, 1} |
-| I0, M1-RND-NM | Optional: IPPO without messages; M1-RND without the mask |
+| I0 | IPPO, no messages (does the centralized critic help?) |
+| M-FULL | Every peer's true SoC and net load, never dropped (upper bound) |
+| M1-HOLD | Evaluation of M1 only: a dropped message reuses the last SoC received |
+| M1-RND-NM | Optional: M1-RND without the mask |
+
+Message arms are evaluated at delivery levels {100%, 90%, 50%, 25%, 0%}; arms without
+messages are evaluated once.
 
 The learner is the reference MAPPO implementation of Yu et al. (NeurIPS 2022),
 [marlbenchmark/on-policy](https://github.com/marlbenchmark/on-policy), vendored
@@ -89,7 +95,7 @@ python -m scripts.train --arm M0 --seed 0 --steps 20000 --env toy   # fast check
 
 | Option | Default | Meaning |
 |--------|---------|---------|
-| `--arm` | `M0` | `M0`, `M1`, `M1-RND`, `I0`, `M1-RND-NM` |
+| `--arm` | `M0` | `M0`, `M1`, `M1-RND`, `I0`, `M-FULL`, `M1-RND-NM` |
 | `--seed` | `0` | Run seed (the same seed gives the same outages in every arm) |
 | `--steps` | `20000` | Total environment steps |
 | `--env` | `toy` | `toy`, `citylearn` (project env: district reward, outage seeding, KPIs) or `citylearn-temp` (old adapter) |
@@ -124,9 +130,9 @@ missing.
 
 | File | What it checks | Needs | Run alone |
 |------|----------------|-------|-----------|
-| `tests/test_channel.py` | Message format, delivery rate and independence, seeding, forced-mask mode, M1-RND schedule | numpy | `python -m pytest tests/test_channel.py -v` |
-| `tests/test_message_env.py` | Actor/critic inputs (critic never sees drops), raw messages, paired seeds across arms, env contract, evaluation | numpy | `python -m pytest tests/test_message_env.py -v` |
-| `tests/test_onpolicy_args.py` | Arms map to identical on-policy settings; vendored on-policy files match upstream | numpy | `python -m pytest tests/test_onpolicy_args.py -v` |
+| `tests/test_channel.py` | Message format, delivery rate and independence, seeding, forced-mask and hold-last modes, M1-RND schedule | numpy | `python -m pytest tests/test_channel.py -v` |
+| `tests/test_message_env.py` | Actor/critic inputs (critic never sees drops), raw messages, M-FULL inputs, paired seeds across arms, env contract, evaluation, every arm on the project env | numpy | `python -m pytest tests/test_message_env.py -v` |
+| `tests/test_onpolicy_args.py` | Arms map to identical on-policy settings; evaluation conditions per arm; vendored on-policy files match upstream | numpy | `python -m pytest tests/test_onpolicy_args.py -v` |
 | `tests/test_citylearn_adapter.py` | Temporary CityLearn adapter against a fake CityLearn: split windows, truncation at episode end, battery energy, seed range | numpy | `python -m pytest tests/test_citylearn_adapter.py -v` |
 | `tests/test_district_env.py` | Project env against a fake CityLearn: reward formula (exports unpenalized) and R0 normalization, outage calendar seeding, KPIs, R0/R1, per-building load in `info`, peer-SoC feature data | numpy | `python -m pytest tests/test_district_env.py -v` |
 | `tests/test_onpolicy_runner.py` | Training with on-policy MAPPO for every arm, reproducibility, checkpoints, learning-from-messages check (about a minute) | torch | `python -m pytest tests/test_onpolicy_runner.py -v -s` |

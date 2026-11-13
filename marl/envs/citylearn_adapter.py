@@ -39,6 +39,7 @@ import numpy as np
 
 DATASET_2023_PHASE_3_3 = "citylearn_challenge_2023_phase_3_3"
 SOC_NAME = "electrical_storage_soc"
+NET_LOAD_NAME = "net_electricity_consumption"
 
 #: Chronological split from the proposal (inclusive time-step ranges).
 SPLITS = {
@@ -123,6 +124,10 @@ class CityLearnAdapter:
                 raise RuntimeError(f"building {building} does not observe {SOC_NAME}")
             self._soc_position.append(names.index(SOC_NAME))
 
+        # Position of the net-load entry (None where a building doesn't observe it)
+        self._net_load_position = [names.index(NET_LOAD_NAME) if NET_LOAD_NAME in names else None
+                                   for names in self.observation_names]
+
         # Global state = shared observations once (from building 0) + every
         # building's local observations
         shared_names = set(getattr(self.env, "shared_observations", []) or [])
@@ -186,6 +191,16 @@ class CityLearnAdapter:
     def soc(self):
         return np.array(
             [self._obs[building][position] for building, position in enumerate(self._soc_position)],
+            dtype=np.float32,
+        )
+
+    def net_load(self):
+        """Each building's net consumption as its own observation shows it (kWh)."""
+        if None in self._net_load_position:
+            raise RuntimeError(f"not every building observes {NET_LOAD_NAME}")
+        return np.array(
+            [self._obs[building][position]
+             for building, position in enumerate(self._net_load_position)],
             dtype=np.float32,
         )
 

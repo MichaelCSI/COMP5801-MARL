@@ -3,8 +3,8 @@
 The learner is the reference MAPPO implementation (marlbenchmark/on-policy,
 Yu et al. 2022), vendored in third_party/onpolicy. ``MAPPOConfig`` holds:
 
-* the fields that DEFINE an arm (messages on/off, training delivery
-  schedule, centralized vs local critic), and
+* the fields that DEFINE an arm (messages on/off, full peer information,
+  training delivery schedule, centralized vs local critic), and
 * run settings (seed, steps, rollout length),
 
 and ``to_onpolicy_args()`` turns it into the ``argparse.Namespace`` on-policy
@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass, field, replace
 
 import numpy as np
 
-from ..comms.channel import RND_P_CHOICES
+from ..comms.channel import EVAL_P_LEVELS, RND_P_CHOICES
 
 # Arm name -> the only settings that differ between arms
 ARMS = {
@@ -27,12 +27,42 @@ ARMS = {
     "M1": dict(use_messages=True, critic="central", train_schedule="fixed", train_p=1.0),
     # messages, p ~ U{0, .5, .75, 1} per training episode
     "M1-RND": dict(use_messages=True, critic="central", train_schedule="random"),
-    # optional: IPPO without messages (each critic sees only its agent's input)
+    # IPPO without messages (each critic sees only its agent's input)
     "I0": dict(use_messages=False, critic="local", train_schedule="none"),
-    # optional: M1-RND without the availability mask (mask column held at 1)
+    # upper bound: every peer's true SoC and net load, never dropped
+    "M-FULL": dict(use_messages=False, full_peer_info=True, critic="central",
+                   train_schedule="none"),
+    # M1-RND without the availability mask (mask column held at 1)
     "M1-RND-NM": dict(use_messages=True, critic="central", train_schedule="random",
                       force_mask_train=True),
 }
+
+CORE_ARMS = ("M0", "M1", "M1-RND", "I0", "M-FULL")
+OPTIONAL_ARMS = ("M1-RND-NM",)
+
+
+def evaluation_conditions(arm: str) -> list:
+    """Every evaluation a trained arm gets, as (label, evaluate kwargs) pairs.
+
+    Arms without messages have no delivery level, so they are evaluated once.
+    Message arms get the full delivery sweep; on top of it M1 is evaluated with
+    drops filled by the last received SoC (M1-HOLD, proposal feedback), and
+    M1-RND with the mask forced to 1 (mask check, Section 6). Both extras only
+    differ from the plain run when something drops, so they skip p = 1.
+    """
+    if arm not in ARMS:
+        raise ValueError(f"unknown arm {arm!r}; choose from {sorted(ARMS)}")
+    if not ARMS[arm]["use_messages"]:
+        return [(arm, {"p": 1.0})]
+
+    conditions = [(f"{arm} p={p}", {"p": p}) for p in EVAL_P_LEVELS]
+    lossy_levels = [p for p in EVAL_P_LEVELS if p < 1.0]
+    if arm == "M1":
+        conditions += [(f"M1-HOLD p={p}", {"p": p, "hold_last": True}) for p in lossy_levels]
+    if arm == "M1-RND":
+        conditions += [(f"M1-RND forced-mask p={p}", {"p": p, "force_mask": True})
+                       for p in lossy_levels]
+    return conditions
 
 # Independent random streams keyed so they do not depend on the arm:
 # same seed => same env reset seeds (outages / windows) in every arm.
@@ -76,6 +106,7 @@ class MAPPOConfig:
     train_p: float = 1.0
     rnd_p_choices: tuple = RND_P_CHOICES
     force_mask_train: bool = False
+    full_peer_info: bool = False
 
     # run settings
     total_steps: int = 200_000       # env steps (each = all agents act once)
@@ -97,6 +128,8 @@ class MAPPOConfig:
     def validate(self) -> None:
         if self.critic not in ("central", "local"):
             raise ValueError("critic must be 'central' or 'local'")
+        if self.use_messages and self.full_peer_info:
+            raise ValueError("an arm gets either lossy messages or full peer information")
         if self.train_schedule not in ("none", "fixed", "random"):
             raise ValueError("train_schedule must be none/fixed/random")
 
