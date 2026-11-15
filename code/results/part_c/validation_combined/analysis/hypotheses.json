@@ -1,0 +1,315 @@
+{
+  "delta_pct": 5.0,
+  "pilot_precision": {
+    "M1_p1_vs_M0_paired_seed_sd_pct": 2.6223266543388193,
+    "above_professor_4pct_warning": false,
+    "advice": "If pilot paired-seed SD exceeds roughly 4 percentage points, consider more M0/M1 seeds before optional arms."
+  },
+  "H1_message_benefit": {
+    "status": "null_bound_below_delta",
+    "M1_p1_vs_M0": {
+      "arm": "M1",
+      "condition": "M1 p=1.0",
+      "metric": "primary",
+      "unit": "percentage_improvement",
+      "n": 5,
+      "mean": -1.2033278796797149,
+      "sd": 2.6223266543388193,
+      "ci_low": -4.459376477902359,
+      "ci_high": 2.05272071854293,
+      "delta_pct": 5.0,
+      "mean_ge_delta": false,
+      "ci_excludes_zero": false,
+      "ci_above_delta": false,
+      "ci_below_delta": true
+    },
+    "caution": "A confidence interval excluding zero is weaker than its entire range exceeding delta."
+  },
+  "H2_fragility": {
+    "status": "M1_advantage_confidently_below_delta_at_p05",
+    "M1_loss_evidence": [
+      {
+        "arm": "M1",
+        "condition": "M1 p=0.5",
+        "metric": "primary",
+        "unit": "percentage_improvement",
+        "n": 5,
+        "mean": -1.9741528072752879,
+        "sd": 2.892059293685161,
+        "ci_low": -5.5651187129147655,
+        "ci_high": 1.61681309836419,
+        "delta_pct": 5.0,
+        "mean_ge_delta": false,
+        "ci_excludes_zero": false,
+        "ci_above_delta": false,
+        "ci_below_delta": true
+      },
+      {
+        "arm": "M1",
+        "condition": "M1 p=0.25",
+        "metric": "primary",
+        "unit": "percentage_improvement",
+        "n": 5,
+        "mean": -2.374689194686048,
+        "sd": 2.781389682691072,
+        "ci_low": -5.82824062865895,
+        "ci_high": 1.0788622392868539,
+        "delta_pct": 5.0,
+        "mean_ge_delta": false,
+        "ci_excludes_zero": false,
+        "ci_above_delta": false,
+        "ci_below_delta": true
+      },
+      {
+        "arm": "M1",
+        "condition": "M1 p=0.0",
+        "metric": "primary",
+        "unit": "percentage_improvement",
+        "n": 5,
+        "mean": -2.649628797505615,
+        "sd": 3.2349619396206135,
+        "ci_low": -6.666364573491958,
+        "ci_high": 1.3671069784807273,
+        "delta_pct": 5.0,
+        "mean_ge_delta": false,
+        "ci_excludes_zero": false,
+        "ci_above_delta": false,
+        "ci_below_delta": true
+      }
+    ],
+    "caution": "The pre-specified fragility criterion concerns M1 vs M0 at p<=0.5."
+  },
+  "H2_robust_training": {
+    "high_delivery_M1_RND_benefit": "inconclusive",
+    "comparisons_at_p1_p09": [
+      {
+        "arm": "M1-RND",
+        "condition": "M1-RND p=1.0",
+        "metric": "primary",
+        "unit": "percentage_improvement",
+        "n": 5,
+        "mean": -3.6148192630404687,
+        "sd": 3.559022671066646,
+        "ci_low": -8.03392958249493,
+        "ci_high": 0.8042910564139913,
+        "delta_pct": 5.0,
+        "mean_ge_delta": false,
+        "ci_excludes_zero": false,
+        "ci_above_delta": false,
+        "ci_below_delta": true
+      },
+      {
+        "arm": "M1-RND",
+        "condition": "M1-RND p=0.9",
+        "metric": "primary",
+        "unit": "percentage_improvement",
+        "n": 5,
+        "mean": -3.4637509265369943,
+        "sd": 2.7050327161980574,
+        "ci_low": -6.822492664203469,
+        "ci_high": -0.10500918887052002,
+        "delta_pct": 5.0,
+        "mean_ge_delta": false,
+        "ci_excludes_zero": true,
+        "ci_above_delta": false,
+        "ci_below_delta": true
+      }
+    ],
+    "robustness_by_delivery": [
+      {
+        "arm": "M1",
+        "p": 0.0,
+        "n": 5,
+        "mean": 1.4228109995315568,
+        "sd": 1.268462417661163,
+        "ci_low": -0.15219311755281884,
+        "ci_high": 2.997815116615932
+      },
+      {
+        "arm": "M1",
+        "p": 0.25,
+        "n": 5,
+        "mean": 1.157773115015016,
+        "sd": 0.8337431282555904,
+        "ci_low": 0.12254428891026392,
+        "ci_high": 2.1930019411197677
+      },
+      {
+        "arm": "M1",
+        "p": 0.5,
+        "n": 5,
+        "mean": 0.7616493706904719,
+        "sd": 1.0998895777058808,
+        "ci_low": -0.6040439199464644,
+        "ci_high": 2.1273426613274085
+      },
+      {
+        "arm": "M1",
+        "p": 0.9,
+        "n": 5,
+        "mean": 0.3790382586896359,
+        "sd": 0.7401150262049014,
+        "ci_low": -0.5399359238786274,
+        "ci_high": 1.2980124412578993
+      },
+      {
+        "arm": "M1",
+        "p": 1.0,
+        "n": 5,
+        "mean": 0.0,
+        "sd": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0
+      },
+      {
+        "arm": "M1-RND",
+        "p": 0.0,
+        "n": 5,
+        "mean": 0.5481628488027059,
+        "sd": 3.7941274403456497,
+        "ci_low": -4.162868598471496,
+        "ci_high": 5.259194296076908
+      },
+      {
+        "arm": "M1-RND",
+        "p": 0.25,
+        "n": 5,
+        "mean": 0.5823154692611667,
+        "sd": 2.807325181853453,
+        "ci_low": -2.903439140297107,
+        "ci_high": 4.06807007881944
+      },
+      {
+        "arm": "M1-RND",
+        "p": 0.5,
+        "n": 5,
+        "mean": 0.6505918144221101,
+        "sd": 2.2968536227353145,
+        "ci_low": -2.201328638072226,
+        "ci_high": 3.502512266916446
+      },
+      {
+        "arm": "M1-RND",
+        "p": 0.9,
+        "n": 5,
+        "mean": -0.12143803238293946,
+        "sd": 1.0421100896553468,
+        "ci_low": -1.4153886128728828,
+        "ci_high": 1.172512548107004
+      },
+      {
+        "arm": "M1-RND",
+        "p": 1.0,
+        "n": 5,
+        "mean": 0.0,
+        "sd": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0
+      }
+    ],
+    "M1_minus_M1_RND_loss_pct": [
+      {
+        "p": 0.0,
+        "n": 5,
+        "mean": 0.8746481507288504,
+        "sd": 4.716053987948686,
+        "ci_low": -4.981106299692333,
+        "ci_high": 6.7304026011500335
+      },
+      {
+        "p": 0.25,
+        "n": 5,
+        "mean": 0.5754576457538493,
+        "sd": 3.064939713973509,
+        "ci_low": -3.2301676537520065,
+        "ci_high": 4.381082945259705
+      },
+      {
+        "p": 0.5,
+        "n": 5,
+        "mean": 0.11105755626836152,
+        "sd": 2.4060418160527415,
+        "ci_low": -2.8764379448971367,
+        "ci_high": 3.0985530574338593
+      },
+      {
+        "p": 0.9,
+        "n": 5,
+        "mean": 0.5004762910725754,
+        "sd": 0.6156307873604031,
+        "ci_low": -0.2639302937786755,
+        "ci_high": 1.2648828759238264
+      },
+      {
+        "p": 1.0,
+        "n": 5,
+        "mean": 0.0,
+        "sd": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0
+      }
+    ],
+    "M1_RND_vs_M0_at_every_delivery": [
+      {
+        "p": 1.0,
+        "mean_improvement_pct": -3.6148192630404687,
+        "ci_low": -8.03392958249493,
+        "ci_high": 0.8042910564139913,
+        "mean_within_delta_of_M0": true,
+        "ci_supports_within_delta": false
+      },
+      {
+        "p": 0.9,
+        "mean_improvement_pct": -3.4637509265369943,
+        "ci_low": -6.822492664203469,
+        "ci_high": -0.10500918887052002,
+        "mean_within_delta_of_M0": true,
+        "ci_supports_within_delta": false
+      },
+      {
+        "p": 0.5,
+        "mean_improvement_pct": -4.233000965340016,
+        "ci_low": -6.68521522015434,
+        "ci_high": -1.7807867105256912,
+        "mean_within_delta_of_M0": true,
+        "ci_supports_within_delta": false
+      },
+      {
+        "p": 0.25,
+        "mean_improvement_pct": -4.154788021900105,
+        "ci_low": -6.816248856144178,
+        "ci_high": -1.493327187656032,
+        "mean_within_delta_of_M0": true,
+        "ci_supports_within_delta": false
+      },
+      {
+        "p": 0.0,
+        "mean_improvement_pct": -4.118049451700796,
+        "ci_low": -8.22052227005134,
+        "ci_high": -0.0155766333502525,
+        "mean_within_delta_of_M0": true,
+        "ci_supports_within_delta": false
+      }
+    ],
+    "caution": "Low relative loss alone does NOT establish message use. M1-RND must also provide a meaningful benefit vs M0 at high delivery."
+  },
+  "H3_exploratory_synchrony": {
+    "M1_p1_vs_M0_signed_correlation_difference": {
+      "arm": "M1",
+      "condition": "M1 p=1.0",
+      "metric": "synchrony",
+      "unit": "correlation_difference",
+      "n": 5,
+      "mean": -0.010061494570242772,
+      "sd": 0.0771259898045737,
+      "ci_low": -0.10582605943641268,
+      "ci_high": 0.08570307029592714,
+      "delta_pct": NaN,
+      "mean_ge_delta": null,
+      "ci_excludes_zero": false,
+      "ci_above_delta": null,
+      "ci_below_delta": null
+    },
+    "caution": "Interpret with valid-pair counts; report |r| to detect anti-phase/strong coupling."
+  }
+}
