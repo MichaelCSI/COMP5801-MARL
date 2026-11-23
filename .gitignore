@@ -1,0 +1,7 @@
+# Project lives in code/ (see code/.gitignore). Root-level ignores only.
+__pycache__/
+*.pyc
+.DS_Store
+.pytest_cache/
+.venv/
+runs/

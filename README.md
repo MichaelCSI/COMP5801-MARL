@@ -21,21 +21,27 @@ messages are evaluated once.
 
 The learner is the reference MAPPO implementation of Yu et al. (NeurIPS 2022),
 [marlbenchmark/on-policy](https://github.com/marlbenchmark/on-policy), vendored
-unmodified in `third_party/onpolicy/`.
+unmodified in `code/third_party/onpolicy/`.
 
 ## Repository layout
 
 ```
-marl/
-  comms/        lossy peer-SoC message channel and delivery schedules
-  envs/         project CityLearn env (reward, outages, KPIs, frozen constants), env contract, toy envs
-  baselines.py  R0 and R1 reference controllers
-  mappo/        glue around on-policy (messages in actor inputs, map arms to on-policy...)
-scripts/        command-line entry points (training, speed check, baselines, alignment check, freeze, export check)
-tests/          unit and integration tests
-third_party/    vendored on-policy MAPPO code (MIT, pinned commit; see VENDORED.md)
-WorkPlan.md     work plan per team member
-requirements.txt, test_marl_env.py   dependencies and installation check
+README.md         this file
+requirements.txt  pinned dependencies (install PyTorch first, see Setup)
+code/
+  marl/
+    comms/        lossy peer-SoC message channel and delivery schedules
+    envs/         project CityLearn env (reward, outages, KPIs, frozen constants), env contract, toy envs
+    baselines.py  R0 and R1 reference controllers
+    mappo/        glue around on-policy (messages in actor inputs, map arms to on-policy...)
+    part_c/       Part C metrics and statistics
+  scripts/        command-line entry points (training, speed check, baselines, alignment check, freeze, export check, Part C)
+  tests/          unit and integration tests
+  third_party/    vendored on-policy MAPPO code (MIT, pinned commit; see VENDORED.md)
+  results/        R0/R1 baselines, export check, Part C evaluations and analysis
+  WorkPlan.md     work plan per team member
+  REFERENCES.md   references and reused code
+  test_marl_env.py  installation check
 ```
 
 ## Setup
@@ -69,7 +75,7 @@ Use Python 3.10, 3.11 or 3.12.
 4. Check the installation:
 
    ```bash
-   python test_marl_env.py
+   python code/test_marl_env.py
    ```
 
    It prints the PyTorch version and whether a GPU is available, then runs a
@@ -79,7 +85,7 @@ Use Python 3.10, 3.11 or 3.12.
    Phase 3.3 dataset. CityLearn downloads a dataset the first time it is used,
    so the first run needs internet access.
 
-Run every command below from the repository root.
+Run every command below from the `code/` folder (`cd code`).
 
 ## Running
 
@@ -155,7 +161,7 @@ Follow the installation instructions in the main **Setup** section before runnin
 
 The experiments were executed using Python 3.10, PyTorch 2.10.0, and CPU training.
 
-Run all commands from the repository root.
+Run all commands from the `code/` folder (`cd code`).
 
 **Activate the virtual environment (Windows):**
 
