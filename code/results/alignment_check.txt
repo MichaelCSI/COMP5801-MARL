@@ -1,0 +1,41 @@
+validation block, outage seed 7, alpha=1.0, beta=1.0
+
+M0 checkpoint: runs\M0_s0.pt
+  R0  return    -874.82   primary 1.0000   cost/R0 1.0000
+  R1  return    -865.14   primary 0.9681   cost/R0 0.9979
+  M0  return    -846.60   primary 0.9489   cost/R0 0.9714
+  ranking by return : M0 > R1 > R0
+  ranking by primary: M0 > R1 > R0
+  alignment check: PASS
+
+M0 checkpoint: runs\M0_s1.pt
+  R0  return    -874.82   primary 1.0000   cost/R0 1.0000
+  R1  return    -865.14   primary 0.9681   cost/R0 0.9979
+  M0  return    -853.91   primary 0.9019   cost/R0 0.9841
+  ranking by return : M0 > R1 > R0
+  ranking by primary: M0 > R1 > R0
+  alignment check: PASS
+
+M0 checkpoint: runs\M0_s2.pt
+  R0  return    -874.82   primary 1.0000   cost/R0 1.0000
+  R1  return    -865.14   primary 0.9681   cost/R0 0.9979
+  M0  return    -855.84   primary 0.9457   cost/R0 0.9829
+  ranking by return : M0 > R1 > R0
+  ranking by primary: M0 > R1 > R0
+  alignment check: PASS
+
+M0 checkpoint: runs\M0_s3.pt
+  R0  return    -874.82   primary 1.0000   cost/R0 1.0000
+  R1  return    -865.14   primary 0.9681   cost/R0 0.9979
+  M0  return    -860.09   primary 0.9405   cost/R0 0.9889
+  ranking by return : M0 > R1 > R0
+  ranking by primary: M0 > R1 > R0
+  alignment check: PASS
+
+M0 checkpoint: runs\M0_s4.pt
+  R0  return    -874.82   primary 1.0000   cost/R0 1.0000
+  R1  return    -865.14   primary 0.9681   cost/R0 0.9979
+  M0  return    -860.66   primary 0.9378   cost/R0 0.9937
+  ranking by return : M0 > R1 > R0
+  ranking by primary: M0 > R1 > R0
+  alignment check: PASS

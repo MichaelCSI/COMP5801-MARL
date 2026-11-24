@@ -1,0 +1,16 @@
+arm,seed,use_messages,critic,train_schedule,train_p,rnd_p_choices,force_mask_train,full_peer_info,total_steps,rollout_steps,normalize_obs,obs_clip,device,onpolicy_overrides
+M0,0,False,central,none,1.0,"[0.0, 0.5, 0.75, 1.0]",False,False,200000,1000,True,10.0,cpu,{}
+M0,1,False,central,none,1.0,"[0.0, 0.5, 0.75, 1.0]",False,False,200000,1000,True,10.0,cpu,{}
+M0,2,False,central,none,1.0,"[0.0, 0.5, 0.75, 1.0]",False,False,200000,1000,True,10.0,cpu,{}
+M0,3,False,central,none,1.0,"[0.0, 0.5, 0.75, 1.0]",False,False,200000,1000,True,10.0,cpu,{}
+M0,4,False,central,none,1.0,"[0.0, 0.5, 0.75, 1.0]",False,False,200000,1000,True,10.0,cpu,{}
+M1,0,True,central,fixed,1.0,"[0.0, 0.5, 0.75, 1.0]",False,False,200000,1000,True,10.0,cpu,{}
+M1,1,True,central,fixed,1.0,"[0.0, 0.5, 0.75, 1.0]",False,False,200000,1000,True,10.0,cpu,{}
+M1,2,True,central,fixed,1.0,"[0.0, 0.5, 0.75, 1.0]",False,False,200000,1000,True,10.0,cpu,{}
+M1,3,True,central,fixed,1.0,"[0.0, 0.5, 0.75, 1.0]",False,False,200000,1000,True,10.0,cpu,{}
+M1,4,True,central,fixed,1.0,"[0.0, 0.5, 0.75, 1.0]",False,False,200000,1000,True,10.0,cpu,{}
+M1-RND,0,True,central,random,1.0,"[0.0, 0.5, 0.75, 1.0]",False,False,200000,1000,True,10.0,cpu,{}
+M1-RND,1,True,central,random,1.0,"[0.0, 0.5, 0.75, 1.0]",False,False,200000,1000,True,10.0,cpu,{}
+M1-RND,2,True,central,random,1.0,"[0.0, 0.5, 0.75, 1.0]",False,False,200000,1000,True,10.0,cpu,{}
+M1-RND,3,True,central,random,1.0,"[0.0, 0.5, 0.75, 1.0]",False,False,200000,1000,True,10.0,cpu,{}
+M1-RND,4,True,central,random,1.0,"[0.0, 0.5, 0.75, 1.0]",False,False,200000,1000,True,10.0,cpu,{}
