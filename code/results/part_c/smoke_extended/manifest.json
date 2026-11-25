@@ -1,0 +1,16 @@
+{
+  "split": "validation",
+  "eval_env_seed": 7,
+  "training_seeds": [
+    0
+  ],
+  "arms_requested": [
+    "I0",
+    "M-FULL"
+  ],
+  "replicates_per_condition": 1,
+  "metric_unit": "peak relative to R0, lower better",
+  "deterministic_policy": true,
+  "replicates_vary": "independent channel-drop realizations; same outage seed",
+  "important": "Do not perform t-tests across drop replicates; pair by training seed"
+}
