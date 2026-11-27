@@ -1,13 +1,5 @@
-
-"""Professor's optional peer-SoC informativeness diagnostic on M0 rollouts.
-
-Uses a chronological 70/30 fit/test split inside VALIDATION (never the held-out
-project test split). Ridge predicts each of the five peers' SoC from the
-receiver's own observation; negative held-out R^2 means worse than a constant.
-
-    python -m scripts.part_c_predictability --checkpoint runs/M0_s0.pt
-"""
 from __future__ import annotations
+import torch
 
 import argparse
 import csv
@@ -18,7 +10,6 @@ from sklearn.linear_model import Ridge
 from sklearn.metrics import r2_score, mean_absolute_error
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
